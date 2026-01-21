@@ -464,6 +464,20 @@ with st.sidebar:
 
     st.divider()
 
+    # Sample data option
+    if "data" not in st.session_state:
+        if st.button("📋 Load Sample Data", help="Load 100 sample posts to try out the app"):
+            sample_path = Path(__file__).parent / "sample_data.csv"
+            if sample_path.exists():
+                df = pd.read_csv(sample_path)
+                st.session_state["data"] = df
+                st.session_state["text_column"] = "text"
+                st.session_state["id_column"] = "id"
+                st.rerun()
+            else:
+                st.error("Sample data file not found")
+        st.caption("or upload your own:")
+
     # File upload
     uploaded_file = st.file_uploader(
         "Upload Data",
@@ -477,6 +491,10 @@ with st.sidebar:
         else:
             df = pd.read_parquet(uploaded_file)
         st.session_state["data"] = df
+
+    # Show data info and column selection when data is loaded
+    if "data" in st.session_state:
+        df = st.session_state["data"]
         st.success(f"Loaded {len(df):,} rows")
 
         # Auto-detect text column (common names)
@@ -496,11 +514,15 @@ with st.sidebar:
                 default_id = candidate
                 break
 
+        # Use existing selection if available, otherwise use auto-detected
+        current_text = st.session_state.get("text_column", columns[default_text_idx])
+        current_id = st.session_state.get("id_column", default_id)
+
         # Column selection
         text_col = st.selectbox(
             "Text column",
             columns,
-            index=default_text_idx,
+            index=columns.index(current_text) if current_text in columns else default_text_idx,
             help="Column containing the text to analyze"
         )
         st.session_state["text_column"] = text_col
@@ -508,7 +530,7 @@ with st.sidebar:
         id_col = st.selectbox(
             "ID column",
             ["(row index)"] + columns,
-            index=(["(row index)"] + columns).index(default_id),
+            index=(["(row index)"] + columns).index(current_id) if current_id in ["(row index)"] + columns else 0,
             help="Column with unique document IDs"
         )
         st.session_state["id_column"] = id_col
