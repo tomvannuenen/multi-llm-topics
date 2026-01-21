@@ -456,7 +456,7 @@ with st.sidebar:
         "OpenRouter API Key",
         type="password",
         value=st.session_state.get("api_key", os.environ.get("OPENROUTER_API_KEY", "")),
-        help="Get your key at openrouter.ai"
+        help="Get your key at [openrouter.ai](https://openrouter.ai)"
     )
     if api_key:
         st.session_state["api_key"] = api_key
