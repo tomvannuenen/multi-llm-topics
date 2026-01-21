@@ -594,8 +594,22 @@ with tab1:
         st.markdown("""
         **Topic Discovery** identifies themes in your documents using multiple LLMs.
 
-        **Why multiple models?** Different LLMs have different biases and vocabularies.
-        Using 3-5 models produces more comprehensive topic coverage than any single model.
+        **How sampling works:**
+        - Each model processes a random sample of your documents (not the full dataset)
+        - For each document, the model either assigns an existing topic or proposes a new one
+        - Topics accumulate as more documents are processed—early documents create new topics, later documents mostly reuse existing ones
+        - This is called "iterative discovery": the topic list grows until it stabilizes
+
+        **Why sample instead of processing everything?**
+        - Topic discovery reaches diminishing returns quickly—after ~200-500 docs, most new documents fit existing topics
+        - Sampling is much cheaper and faster than processing your entire dataset
+        - The full dataset gets labeled in the Assignment step (after consolidation)
+
+        **Why multiple models?**
+        - Different LLMs have different biases and vocabularies
+        - Claude tends toward psychological framing, GPT toward abstraction, Gemini toward fine-grained distinctions
+        - Using 3-5 models produces more comprehensive topic coverage than any single model
+        - Topics that multiple models independently discover are more robust
 
         **Recommended approach:**
         - Select 3-5 diverse models (different providers)
