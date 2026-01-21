@@ -946,4 +946,4 @@ with tab4:
 
 # Footer
 st.divider()
-st.caption("Multi-LLM Topics • Created by [Tom van Nuenen](https://tomvannuenen.com) • [GitHub](https://github.com/tomvannuenen/multi-llm-topics)")
+st.caption("Multi-LLM Topics • Created by [Tom van Nuenen](https://tomvannuenen.github.io) • [GitHub](https://github.com/tomvannuenen/multi-llm-topics)")
