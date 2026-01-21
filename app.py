@@ -522,7 +522,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
 # Sidebar
 with st.sidebar:
     st.markdown("## 🏷️ Multi-LLM Topics")
-    st.caption("Ensemble topic discovery using multiple AI models")
+    st.caption("Discover themes in your text data by combining multiple AI models. Different models find different patterns—together they produce more robust results than any single model.")
 
     st.divider()
 
