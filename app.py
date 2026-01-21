@@ -530,10 +530,14 @@ with st.sidebar:
                         # Show credit balance if available
                         usage = data.get("usage", 0)
                         limit = data.get("limit")
-                        if limit:
-                            st.success(f"API key valid (${usage:.2f} / ${limit:.2f} used)")
+                        limit_remaining = data.get("limit_remaining")
+                        if limit_remaining is not None:
+                            st.success(f"✓ API key valid — ${limit_remaining:.2f} credits remaining")
+                        elif limit:
+                            remaining = limit - usage
+                            st.success(f"✓ API key valid — ${remaining:.2f} credits remaining")
                         else:
-                            st.success("API key valid")
+                            st.success("✓ API key valid (pay-as-you-go)")
                     else:
                         st.session_state["api_key_valid"] = False
                         st.error("Invalid API key")
