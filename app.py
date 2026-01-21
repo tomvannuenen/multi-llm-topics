@@ -299,28 +299,51 @@ def process_single_post(client, model, post_text, topics, lock):
         return "", False
 
 
-def run_discovery(client, model, texts, n_samples, progress_bar, status_text):
-    """Run topic discovery on texts."""
+def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
+                  batch_size=50, early_stop_batches=3):
+    """Run topic discovery on texts with early stopping."""
     sample = texts[:n_samples] if len(texts) > n_samples else texts
     topics = {}
     lock = threading.Lock()
 
     total = len(sample)
     completed = 0
-    new_topics = 0
+    new_topics_total = 0
+    batches_without_new = 0
+    early_stopped = False
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(process_single_post, client, model, text, topics, lock): i
-                   for i, text in enumerate(sample)}
+    # Process in batches for early stopping
+    for batch_start in range(0, total, batch_size):
+        batch_end = min(batch_start + batch_size, total)
+        batch_texts = sample[batch_start:batch_end]
+        new_in_batch = 0
 
-        for future in as_completed(futures):
-            topic, is_new = future.result()
-            completed += 1
-            if is_new:
-                new_topics += 1
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(process_single_post, client, model, text, topics, lock): i
+                       for i, text in enumerate(batch_texts)}
 
-            progress_bar.progress(completed / total)
-            status_text.text(f"Processed {completed}/{total} documents | {len(topics)} topics ({new_topics} new)")
+            for future in as_completed(futures):
+                topic, is_new = future.result()
+                completed += 1
+                if is_new:
+                    new_topics_total += 1
+                    new_in_batch += 1
+
+                progress_bar.progress(completed / total)
+                status_text.text(f"Processed {completed}/{total} documents | {len(topics)} topics ({new_topics_total} new)")
+
+        # Check early stopping
+        if new_in_batch == 0:
+            batches_without_new += 1
+            if batches_without_new >= early_stop_batches:
+                early_stopped = True
+                status_text.text(f"Early stop: {batches_without_new} batches without new topics. {len(topics)} topics found.")
+                break
+        else:
+            batches_without_new = 0
+
+    if not early_stopped:
+        status_text.text(f"Complete: {len(topics)} topics from {completed} documents")
 
     return topics
 
@@ -599,6 +622,12 @@ with tab1:
         - For each document, the model either assigns an existing topic or proposes a new one
         - Topics accumulate as more documents are processed—early documents create new topics, later documents mostly reuse existing ones
         - This is called "iterative discovery": the topic list grows until it stabilizes
+
+        **Early stopping:**
+        - Documents are processed in batches of 50
+        - If 3 consecutive batches produce no new topics, discovery stops early
+        - This saves time and money when the topic space is saturated
+        - You'll see "Early stop" in the status if this happens
 
         **Why sample instead of processing everything?**
         - Topic discovery reaches diminishing returns quickly—after ~200-500 docs, most new documents fit existing topics
