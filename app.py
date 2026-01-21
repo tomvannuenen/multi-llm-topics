@@ -417,35 +417,55 @@ def run_consolidation(client, model, topics, progress_bar, status_text):
     return json.loads(clean)
 
 
-def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_text):
+def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_text, assignment_prompt):
     """Assign topics to documents."""
     taxonomy_formatted = "\n".join(f"- {t['topic']}: {t.get('description', '')}" for t in taxonomy)
     valid_labels = {t['topic'] for t in taxonomy}
+    n_topics = len(taxonomy)
 
     results = []
     total = len(texts)
 
     def assign_single(text, doc_id):
-        prompt = st.session_state["assignment_prompt"].format(
-            n_topics=len(taxonomy),
+        prompt = assignment_prompt.format(
+            n_topics=n_topics,
             taxonomy=taxonomy_formatted,
             post=text[:8000]
         )
 
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=500,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
+            # Try with JSON mode first, fall back if not supported
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=500,
+                    temperature=0.0,
+                    response_format={"type": "json_object"},
+                )
+            except Exception as e:
+                if "json" in str(e).lower() or "response_format" in str(e).lower():
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=500,
+                        temperature=0.0,
+                    )
+                else:
+                    raise
 
             content = response.choices[0].message.content
             if not content:
                 return {"id": doc_id, "error": "empty_response"}
 
-            result = json.loads(content.strip())
+            # Handle markdown code blocks
+            clean_content = content.strip()
+            if clean_content.startswith("```"):
+                clean_content = clean_content[clean_content.find("\n")+1:]
+                if clean_content.endswith("```"):
+                    clean_content = clean_content[:-3].strip()
+
+            result = json.loads(clean_content)
             primary = result.get("primary_topic", "")
             secondary = result.get("secondary_topics", [])
 
@@ -464,7 +484,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
                 "reasoning": result.get("reasoning", "")
             }
         except Exception as e:
-            return {"id": doc_id, "error": str(e)}
+            return {"id": doc_id, "error": str(e)[:100]}
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(assign_single, text, doc_id): i
@@ -1076,7 +1096,8 @@ with tab3:
                 progress = st.progress(0)
                 status = st.empty()
 
-                results = run_assignment(client, model, texts, ids, taxonomy, progress, status)
+                results = run_assignment(client, model, texts, ids, taxonomy, progress, status,
+                                         st.session_state["assignment_prompt"])
                 st.session_state["assignments"] = results
 
                 # Convert to DataFrame
