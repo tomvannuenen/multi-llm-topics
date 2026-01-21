@@ -674,19 +674,6 @@ if "data" not in st.session_state:
 
     st.divider()
 
-# Pipeline overview
-st.markdown("""
-<div style="display: flex; justify-content: center; align-items: center; padding: 10px 0 20px 0; gap: 8px; font-size: 14px; color: #888;">
-    <span style="background: #262730; padding: 6px 12px; border-radius: 6px;"><b>1.</b> Discovery</span>
-    <span>→</span>
-    <span style="background: #262730; padding: 6px 12px; border-radius: 6px;"><b>2.</b> Consolidation</span>
-    <span>→</span>
-    <span style="background: #262730; padding: 6px 12px; border-radius: 6px;"><b>3.</b> Assignment</span>
-    <span>→</span>
-    <span style="background: #262730; padding: 6px 12px; border-radius: 6px;"><b>4.</b> Results</span>
-</div>
-""", unsafe_allow_html=True)
-
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
 
 # Recommended models by task
