@@ -261,12 +261,14 @@ This approach builds on ideas from LLM-based topic discovery, including:
 ## Citation
 
 ```bibtex
-@software{multi_llm_topics,
+@software{vannuenen2025multilllmtopics,
+  author = {van Nuenen, Tom},
   title = {Multi-LLM Topics: Ensemble Topic Discovery},
-  year = {2025}
+  year = {2025},
+  url = {https://github.com/tomvannuenen/multi-llm-topics}
 }
 ```
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
