@@ -522,7 +522,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
 # Sidebar
 with st.sidebar:
     st.markdown("## 🏷️ Multi-LLM Topics")
-    st.caption("Discover themes in your text data by combining multiple AI models. Different models find different patterns—together they produce more robust results than any single model.")
+    st.caption("Discover themes in your text data using generative AI models from [OpenRouter](https://openrouter.ai). Different models find different patterns—together they produce more robust results than any single model.")
 
     st.divider()
 
