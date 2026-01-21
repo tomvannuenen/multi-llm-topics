@@ -168,8 +168,8 @@ def get_models_by_category():
         "pricing": all_models_info,
     }
 
-# Prompts
-DISCOVERY_PROMPT = """Identify the main topic of this document.
+# Default Prompts
+DEFAULT_DISCOVERY_PROMPT = """Identify the main topic of this document.
 
 [Existing Topics]
 {topics}
@@ -190,7 +190,7 @@ Bad topic examples: "number_1", "post_about_thing", "miscellaneous", "other"
 Respond with JSON:
 {{"action": "existing" or "new", "topic": "descriptive_topic_label", "description": "One sentence description (required for new topics)"}}"""
 
-CONSOLIDATION_PROMPT = """Consolidate these topic labels into a coherent taxonomy.
+DEFAULT_CONSOLIDATION_PROMPT = """Consolidate these topic labels into a coherent taxonomy.
 
 These topics were discovered by different LLMs. Due to different naming conventions, there is overlap. Your task:
 1. Merge topics that represent the SAME concept (different wording for same idea)
@@ -210,7 +210,7 @@ Respond with JSON:
   "unmapped": []
 }}"""
 
-ASSIGNMENT_PROMPT = """Assign 1-3 topic labels to this document.
+DEFAULT_ASSIGNMENT_PROMPT = """Assign 1-3 topic labels to this document.
 
 Rules:
 - Select the PRIMARY topic (most relevant) first
@@ -225,6 +225,14 @@ DOCUMENT:
 
 Respond with JSON only:
 {{"primary_topic": "most_relevant", "secondary_topics": ["other1", "other2"], "reasoning": "Brief explanation"}}"""
+
+# Initialize prompts in session state
+if "discovery_prompt" not in st.session_state:
+    st.session_state["discovery_prompt"] = DEFAULT_DISCOVERY_PROMPT
+if "consolidation_prompt" not in st.session_state:
+    st.session_state["consolidation_prompt"] = DEFAULT_CONSOLIDATION_PROMPT
+if "assignment_prompt" not in st.session_state:
+    st.session_state["assignment_prompt"] = DEFAULT_ASSIGNMENT_PROMPT
 
 
 def get_client():
@@ -248,7 +256,7 @@ def process_single_post(client, model, post_text, topics, lock):
         topics_formatted = "\n".join(f"- {t}: {d.get('description', '')}"
                                       for t, d in topics.items()) if topics else "(No topics yet)"
 
-        prompt = DISCOVERY_PROMPT.format(topics=topics_formatted, post=post_text[:6000])
+        prompt = st.session_state["discovery_prompt"].format(topics=topics_formatted, post=post_text[:6000])
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -320,7 +328,7 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text):
 def run_consolidation(client, model, topics, progress_bar, status_text):
     """Consolidate topics into taxonomy."""
     topics_formatted = "\n".join(f"- {t}" for t in sorted(topics))
-    prompt = CONSOLIDATION_PROMPT.format(n_topics=len(topics), topics=topics_formatted)
+    prompt = st.session_state["consolidation_prompt"].format(n_topics=len(topics), topics=topics_formatted)
 
     status_text.text(f"Sending {len(topics)} topics to {model}...")
     progress_bar.progress(0.3)
@@ -361,7 +369,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
     total = len(texts)
 
     def assign_single(text, doc_id):
-        prompt = ASSIGNMENT_PROMPT.format(
+        prompt = st.session_state["assignment_prompt"].format(
             n_topics=len(taxonomy),
             taxonomy=taxonomy_formatted,
             post=text[:8000]
@@ -597,6 +605,25 @@ with tab1:
         **Cost:** Discovery is cheap (~$0.01-0.05 per 100 docs with fast models)
         """)
 
+    with st.expander("✏️ Customize Discovery Prompt", expanded=False):
+        st.caption("Edit the prompt used to discover topics. Use `{topics}` for existing topics and `{post}` for the document text.")
+        edited_discovery = st.text_area(
+            "Discovery Prompt",
+            value=st.session_state["discovery_prompt"],
+            height=300,
+            key="discovery_prompt_editor",
+            label_visibility="collapsed"
+        )
+        col_reset, col_save = st.columns([1, 1])
+        with col_reset:
+            if st.button("Reset to Default", key="reset_discovery"):
+                st.session_state["discovery_prompt"] = DEFAULT_DISCOVERY_PROMPT
+                st.rerun()
+        with col_save:
+            if st.button("Save Changes", key="save_discovery", type="primary"):
+                st.session_state["discovery_prompt"] = edited_discovery
+                st.success("Prompt saved!")
+
     # Fetch available models
     models_dict = get_models_by_category()
     all_models = models_dict["all"]
@@ -702,6 +729,25 @@ with tab2:
         **Cost:** Consolidation is a single API call (~$0.50-2.00 for 500+ topics)
         """)
 
+    with st.expander("✏️ Customize Consolidation Prompt", expanded=False):
+        st.caption("Edit the prompt used to consolidate topics. Use `{n_topics}` for topic count and `{topics}` for the topic list.")
+        edited_consolidation = st.text_area(
+            "Consolidation Prompt",
+            value=st.session_state["consolidation_prompt"],
+            height=300,
+            key="consolidation_prompt_editor",
+            label_visibility="collapsed"
+        )
+        col_reset, col_save = st.columns([1, 1])
+        with col_reset:
+            if st.button("Reset to Default", key="reset_consolidation"):
+                st.session_state["consolidation_prompt"] = DEFAULT_CONSOLIDATION_PROMPT
+                st.rerun()
+        with col_save:
+            if st.button("Save Changes", key="save_consolidation", type="primary"):
+                st.session_state["consolidation_prompt"] = edited_consolidation
+                st.success("Prompt saved!")
+
     if "discovered_topics" not in st.session_state:
         st.info("Run discovery first, or upload existing topics.")
 
@@ -786,6 +832,25 @@ with tab3:
 
         **Cost:** ~$0.01-0.05 per 100 documents with cheap models
         """)
+
+    with st.expander("✏️ Customize Assignment Prompt", expanded=False):
+        st.caption("Edit the prompt used to assign topics. Use `{n_topics}` for topic count, `{taxonomy}` for the taxonomy, and `{post}` for the document.")
+        edited_assignment = st.text_area(
+            "Assignment Prompt",
+            value=st.session_state["assignment_prompt"],
+            height=300,
+            key="assignment_prompt_editor",
+            label_visibility="collapsed"
+        )
+        col_reset, col_save = st.columns([1, 1])
+        with col_reset:
+            if st.button("Reset to Default", key="reset_assignment"):
+                st.session_state["assignment_prompt"] = DEFAULT_ASSIGNMENT_PROMPT
+                st.rerun()
+        with col_save:
+            if st.button("Save Changes", key="save_assignment", type="primary"):
+                st.session_state["assignment_prompt"] = edited_assignment
+                st.success("Prompt saved!")
 
     if "taxonomy" not in st.session_state:
         st.info("Run consolidation first, or upload existing taxonomy.")
