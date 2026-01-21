@@ -708,9 +708,15 @@ with tab1:
             help="Choose 2-5 models from different providers for diverse topic coverage. Fast/cheap models work well."
         )
 
+        # Cap max samples at actual data size
+        max_docs = len(st.session_state["data"]) if "data" in st.session_state else 1000
+        default_samples = min(200, max_docs)
         n_samples = st.slider(
             "Documents per model",
-            50, 1000, 200, 50,
+            min_value=min(50, max_docs),
+            max_value=max_docs,
+            value=default_samples,
+            step=50,
             help="Number of documents each model will analyze. More = better coverage but higher cost. 200-500 is usually sufficient."
         )
 
