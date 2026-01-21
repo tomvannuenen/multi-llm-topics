@@ -243,7 +243,7 @@ def get_client():
     return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
 
-def process_single_post(client, model, post_text, topics, lock, errors):
+def process_single_post(client, model, post_text, topics, lock, errors, discovery_prompt):
     """Process a single post for topic discovery."""
     try:
         # Handle None or non-string values
@@ -256,7 +256,7 @@ def process_single_post(client, model, post_text, topics, lock, errors):
         topics_formatted = "\n".join(f"- {t}: {d.get('description', '')}"
                                       for t, d in topics.items()) if topics else "(No topics yet)"
 
-        prompt = st.session_state["discovery_prompt"].format(topics=topics_formatted, post=post_text[:6000])
+        prompt = discovery_prompt.format(topics=topics_formatted, post=post_text[:6000])
 
         # Try with JSON mode first, fall back to regular mode
         try:
@@ -331,7 +331,7 @@ def process_single_post(client, model, post_text, topics, lock, errors):
 
 
 def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
-                  batch_size=50, early_stop_batches=3):
+                  discovery_prompt, batch_size=50, early_stop_batches=3):
     """Run topic discovery on texts with early stopping."""
     sample = texts[:n_samples] if len(texts) > n_samples else texts
     topics = {}
@@ -351,7 +351,7 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
         new_in_batch = 0
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(process_single_post, client, model, text, topics, lock, errors): i
+            futures = {executor.submit(process_single_post, client, model, text, topics, lock, errors, discovery_prompt): i
                        for i, text in enumerate(batch_texts)}
 
             for future in as_completed(futures):
@@ -826,7 +826,8 @@ with tab1:
                 progress = st.progress(0)
                 status = st.empty()
 
-                topics, errors = run_discovery(client, model, texts, n_samples, progress, status)
+                topics, errors = run_discovery(client, model, texts, n_samples, progress, status,
+                                               st.session_state["discovery_prompt"])
 
                 # Show errors if any
                 if errors:
