@@ -104,7 +104,26 @@ def fetch_openrouter_models():
     return {}
 
 
-def get_model_cost_estimate(model_id: str, n_docs: int, task: str = "discovery") -> float:
+def estimate_tokens(text: str) -> int:
+    """Estimate token count from text (~4 chars per token)."""
+    if not text or pd.isna(text):
+        return 0
+    return len(str(text)) // 4
+
+
+def get_avg_doc_tokens(df: pd.DataFrame, text_column: str, sample_size: int = 100) -> int:
+    """Get average token count from a sample of documents."""
+    if text_column not in df.columns:
+        return 500  # fallback
+    sample = df[text_column].dropna().head(sample_size)
+    if len(sample) == 0:
+        return 500
+    avg_chars = sample.apply(lambda x: len(str(x))).mean()
+    return int(avg_chars // 4)
+
+
+def get_model_cost_estimate(model_id: str, n_docs: int, task: str = "discovery",
+                            avg_doc_tokens: int = None) -> float:
     """Estimate cost for a task based on model pricing."""
     models = fetch_openrouter_models()
     if model_id not in models:
@@ -114,18 +133,20 @@ def get_model_cost_estimate(model_id: str, n_docs: int, task: str = "discovery")
     prompt_cost = pricing["prompt_cost"]  # per 1M tokens
     completion_cost = pricing["completion_cost"]
 
-    # Rough token estimates per document
+    # Use actual avg tokens if provided, otherwise use defaults
+    doc_tokens = avg_doc_tokens if avg_doc_tokens else 500
+
     if task == "discovery":
-        # ~500 tokens prompt + ~50 tokens response per doc
-        tokens_in = n_docs * 500
+        # prompt template (~200 tokens) + doc text + ~50 tokens response
+        tokens_in = n_docs * (200 + min(doc_tokens, 1500))  # cap at 1500 (we truncate long docs)
         tokens_out = n_docs * 50
     elif task == "consolidation":
         # One big call: ~20 tokens per topic input + ~50 tokens per topic output
         tokens_in = n_docs * 20  # n_docs here is n_topics
         tokens_out = n_docs * 50
     else:  # assignment
-        # ~1500 tokens prompt (taxonomy) + ~100 tokens response per doc
-        tokens_in = n_docs * 1500
+        # taxonomy (~1000 tokens) + doc text + ~100 tokens response
+        tokens_in = n_docs * (1000 + min(doc_tokens, 2000))  # cap at 2000
         tokens_out = n_docs * 100
 
     cost = (tokens_in / 1_000_000) * prompt_cost + (tokens_out / 1_000_000) * completion_cost
@@ -830,8 +851,11 @@ with tab1:
         st.metric("Models Selected", len(selected_models))
         st.metric("Est. API Calls", len(selected_models) * n_samples)
 
-        # Cost estimate
-        total_cost = sum(get_model_cost_estimate(m, n_samples, "discovery") for m in selected_models)
+        # Cost estimate based on actual text length
+        avg_tokens = None
+        if "data" in st.session_state and "text_column" in st.session_state:
+            avg_tokens = get_avg_doc_tokens(st.session_state["data"], st.session_state["text_column"])
+        total_cost = sum(get_model_cost_estimate(m, n_samples, "discovery", avg_tokens) for m in selected_models)
         st.metric("Est. Cost", format_cost(total_cost))
 
     if st.button("🚀 Start Discovery", type="primary", use_container_width=True):
@@ -1081,7 +1105,11 @@ with tab3:
             )
         with col3:
             st.metric("Categories", len(taxonomy))
-            cost = get_model_cost_estimate(model, n_docs, "assignment")
+            # Cost estimate based on actual text length
+            avg_tokens = None
+            if "data" in st.session_state and "text_column" in st.session_state:
+                avg_tokens = get_avg_doc_tokens(st.session_state["data"], st.session_state["text_column"])
+            cost = get_model_cost_estimate(model, n_docs, "assignment", avg_tokens)
             st.metric("Est. Cost", format_cost(cost))
 
         if st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
