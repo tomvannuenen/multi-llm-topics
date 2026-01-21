@@ -709,16 +709,33 @@ with tab1:
         )
 
         # Cap max samples at actual data size
-        max_docs = len(st.session_state["data"]) if "data" in st.session_state else 1000
-        default_samples = min(200, max_docs)
-        n_samples = st.slider(
-            "Documents per model",
-            min_value=min(50, max_docs),
-            max_value=max_docs,
-            value=default_samples,
-            step=50,
-            help="Number of documents each model will analyze. More = better coverage but higher cost. 200-500 is usually sufficient."
-        )
+        if "data" in st.session_state:
+            max_docs = len(st.session_state["data"])
+            # For small datasets, just use the full dataset
+            if max_docs <= 100:
+                n_samples = st.number_input(
+                    "Documents per model",
+                    min_value=10,
+                    max_value=max_docs,
+                    value=max_docs,
+                    step=10,
+                    help="Number of documents each model will analyze."
+                )
+            else:
+                n_samples = st.slider(
+                    "Documents per model",
+                    min_value=50,
+                    max_value=max_docs,
+                    value=min(200, max_docs),
+                    step=50,
+                    help="Number of documents each model will analyze. More = better coverage but higher cost. 200-500 is usually sufficient."
+                )
+        else:
+            n_samples = st.slider(
+                "Documents per model",
+                50, 1000, 200, 50,
+                help="Number of documents each model will analyze. More = better coverage but higher cost. 200-500 is usually sufficient."
+            )
 
     with col2:
         st.metric("Models Selected", len(selected_models))
