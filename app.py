@@ -468,7 +468,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader(
         "Upload Data",
         type=["csv", "parquet"],
-        help="CSV or Parquet file with text data"
+        help="CSV or Parquet file with text data. The app auto-detects common text columns (text, body, selftext, content) but you can change it after uploading."
     )
 
     if uploaded_file:
