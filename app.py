@@ -47,24 +47,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Default recommended models (used if API fetch fails)
+# Free models have :free suffix - great for testing!
 DEFAULT_DISCOVERY_MODELS = [
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "deepseek/deepseek-chat-v3-0324:free",
     "google/gemini-2.0-flash-001",
     "anthropic/claude-haiku-4.5",
-    "openai/gpt-4.1-nano",
-    "mistralai/ministral-8b-2412",
-    "deepseek/deepseek-chat-v3-0324",
 ]
 
 DEFAULT_CONSOLIDATION_MODELS = [
+    "google/gemini-2.5-pro-exp-03-25:free",
+    "deepseek/deepseek-chat-v3-0324:free",
     "anthropic/claude-sonnet-4",
-    "openai/gpt-4.1",
-    "google/gemini-2.0-flash-001",
 ]
 
 DEFAULT_ASSIGNMENT_MODELS = [
-    "google/gemini-2.5-flash-lite",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
     "google/gemini-2.0-flash-001",
-    "anthropic/claude-haiku-4.5",
 ]
 
 
@@ -683,13 +684,15 @@ if "data" not in st.session_state:
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("#### 🔑 Step 1")
-        st.caption("Get an API key from [OpenRouter](https://openrouter.ai) — free credits for new accounts")
+        st.caption("Get an API key from [OpenRouter](https://openrouter.ai) — free to sign up")
     with col2:
         st.markdown("#### 📄 Step 2")
         st.caption("Upload a CSV file with a text column, or load the sample data")
     with col3:
         st.markdown("#### ▶️ Step 3")
         st.caption("Run Discovery → Consolidation → Assignment, then download results")
+
+    st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. We pre-select free models by default.")
 
     with st.expander("📖 How does this work?", expanded=False):
         st.markdown("""
@@ -728,27 +731,28 @@ if "data" not in st.session_state:
 
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
 
-# Recommended models by task
+# Recommended models by task (free models first for easy testing)
 RECOMMENDED_DISCOVERY = [
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "deepseek/deepseek-chat-v3-0324:free",
     "google/gemini-2.0-flash-001",
-    "google/gemini-2.5-flash-preview-05-20",
     "anthropic/claude-haiku-4.5",
     "openai/gpt-4.1-nano",
-    "mistralai/mistral-small-3.1-24b-instruct",
 ]
 
 RECOMMENDED_CONSOLIDATION = [
+    "google/gemini-2.5-pro-exp-03-25:free",
+    "deepseek/deepseek-chat-v3-0324:free",
     "anthropic/claude-sonnet-4",
     "openai/gpt-4.1",
-    "google/gemini-2.5-pro-preview-05-06",
-    "anthropic/claude-3.5-sonnet",
 ]
 
 RECOMMENDED_ASSIGNMENT = [
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
     "google/gemini-2.5-flash-lite-preview-06-17",
     "google/gemini-2.0-flash-001",
-    "openai/gpt-4.1-nano",
-    "anthropic/claude-haiku-4.5",
 ]
 
 # Tab 1: Discovery
