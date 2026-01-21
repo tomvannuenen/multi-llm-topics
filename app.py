@@ -500,8 +500,8 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
 
 # Sidebar
 with st.sidebar:
-    st.title("🏷️ Multi-LLM Topics")
-    st.caption("Ensemble topic discovery")
+    st.markdown("## 🏷️ Multi-LLM Topics")
+    st.caption("Ensemble topic discovery using multiple AI models")
 
     st.divider()
 
@@ -621,10 +621,22 @@ with st.sidebar:
         st.session_state["id_column"] = id_col
 
     st.divider()
-    st.caption("Built with Streamlit")
 
-# Main content - Introduction
-st.title("Multi-LLM Topic Discovery")
+    # Show completed steps
+    steps_done = []
+    if "data" in st.session_state:
+        steps_done.append("✓ Data loaded")
+    if "discovered_topics" in st.session_state:
+        steps_done.append("✓ Discovery done")
+    if "taxonomy" in st.session_state:
+        steps_done.append("✓ Consolidated")
+    if "assignments" in st.session_state:
+        steps_done.append("✓ Assigned")
+
+    if steps_done:
+        st.caption(" → ".join(steps_done))
+
+# Main content
 
 # Show intro when no data loaded yet
 if "data" not in st.session_state:
@@ -637,11 +649,14 @@ if "data" not in st.session_state:
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.info("**Step 1:** Get an API key from [OpenRouter](https://openrouter.ai) (free credits for new accounts)")
+        st.markdown("#### 🔑 Step 1")
+        st.caption("Get an API key from [OpenRouter](https://openrouter.ai) — free credits for new accounts")
     with col2:
-        st.info("**Step 2:** Upload a CSV file with a text column")
+        st.markdown("#### 📄 Step 2")
+        st.caption("Upload a CSV file with a text column, or load the sample data")
     with col3:
-        st.info("**Step 3:** Run Discovery → Consolidation → Assignment")
+        st.markdown("#### ▶️ Step 3")
+        st.caption("Run Discovery → Consolidation → Assignment, then download results")
 
     with st.expander("📖 How does this work?", expanded=False):
         st.markdown("""
