@@ -538,6 +538,7 @@ with st.sidebar:
         if api_key != st.session_state.get("api_key_validated", ""):
             with st.spinner("Validating API key..."):
                 try:
+                    # First validate the key
                     response = requests.get(
                         "https://openrouter.ai/api/v1/auth/key",
                         headers={"Authorization": f"Bearer {api_key}"},
@@ -547,20 +548,29 @@ with st.sidebar:
                         st.session_state["api_key"] = api_key
                         st.session_state["api_key_validated"] = api_key
                         st.session_state["api_key_valid"] = True
-                        data = response.json().get("data", {})
-                        # Show credit balance if available
-                        # See: https://openrouter.ai/docs/api/reference/authentication
-                        usage = data.get("usage", 0)  # Credits used
-                        limit = data.get("limit")      # Credit limit (null if unlimited)
-                        is_free_tier = data.get("is_free_tier", False)
 
-                        if limit is not None:
-                            remaining = limit - usage
-                            st.success(f"✓ Valid — ${remaining:.2f} of ${limit:.2f} credits remaining")
-                        elif usage > 0:
-                            st.success(f"✓ Valid — ${usage:.2f} credits used")
+                        # Try to get actual credit balance
+                        credits_response = requests.get(
+                            "https://openrouter.ai/api/v1/credits",
+                            headers={"Authorization": f"Bearer {api_key}"},
+                            timeout=10
+                        )
+                        if credits_response.status_code == 200:
+                            credits_data = credits_response.json().get("data", {})
+                            total_credits = credits_data.get("total_credits", 0)
+                            total_usage = credits_data.get("total_usage", 0)
+                            remaining = total_credits - total_usage
+                            st.success(f"✓ Valid — ${remaining:.2f} credits remaining")
                         else:
-                            st.success("✓ API key valid")
+                            # Fall back to key info
+                            data = response.json().get("data", {})
+                            usage = data.get("usage", 0)
+                            limit = data.get("limit")
+                            if limit is not None:
+                                remaining = limit - usage
+                                st.success(f"✓ Valid — ${remaining:.2f} credits remaining")
+                            else:
+                                st.success("✓ API key valid")
                     else:
                         st.session_state["api_key_valid"] = False
                         st.error("Invalid API key")
@@ -568,7 +578,7 @@ with st.sidebar:
                     st.session_state["api_key_valid"] = False
                     st.error(f"Could not validate key: {e}")
         elif st.session_state.get("api_key_valid"):
-            st.success("API key valid")
+            st.success("✓ API key valid")
 
     st.divider()
 
