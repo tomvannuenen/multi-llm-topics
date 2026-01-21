@@ -485,7 +485,62 @@ with st.sidebar:
     st.divider()
     st.caption("Built with Streamlit")
 
-# Main content - Pipeline overview
+# Main content - Introduction
+st.title("Multi-LLM Topic Discovery")
+
+# Show intro when no data loaded yet
+if "data" not in st.session_state:
+    st.markdown("""
+    **Discover topics in your text data using multiple AI models.**
+
+    This tool uses an ensemble of LLMs (GPT, Claude, Gemini, etc.) to identify themes
+    in your documents. Using multiple models produces more robust results than any single model.
+    """)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("**Step 1:** Get an API key from [OpenRouter](https://openrouter.ai) (free credits for new accounts)")
+    with col2:
+        st.info("**Step 2:** Upload a CSV file with a text column")
+    with col3:
+        st.info("**Step 3:** Run Discovery → Consolidation → Assignment")
+
+    with st.expander("📖 How does this work?", expanded=False):
+        st.markdown("""
+        ### Why multiple LLMs?
+
+        Traditional topic modeling (LDA, BERTopic) struggles with domain-specific text where
+        vocabulary is uniform. LLM-based discovery uses semantic understanding instead of
+        word co-occurrence patterns.
+
+        Different LLMs have different biases:
+        - **Claude** tends toward psychological/mental health framing
+        - **GPT** operates at higher abstraction levels
+        - **Gemini** produces fine-grained distinctions
+        - **DeepSeek** emphasizes power dynamics
+
+        By combining multiple models, we get complementary perspectives that consolidate
+        into a more robust taxonomy.
+
+        ### The pipeline
+
+        1. **Discovery**: Multiple LLMs independently identify topics from a sample of your documents
+        2. **Consolidation**: A strong LLM merges semantically equivalent topics into a coherent taxonomy
+        3. **Assignment**: A fast LLM assigns 1-3 topics to each document
+        4. **Results**: Download your labeled data as CSV
+
+        ### Cost
+
+        Typical cost for a few hundred documents: **$0.50–$2.00** using cheap models.
+        The app shows cost estimates before you run each step.
+
+        ---
+        *[View on GitHub](https://github.com/tomvannuenen/multi-llm-topics) • Created by Tom van Nuenen*
+        """)
+
+    st.divider()
+
+# Pipeline overview
 st.markdown("""
 <div style="display: flex; justify-content: center; align-items: center; padding: 10px 0 20px 0; gap: 8px; font-size: 14px; color: #888;">
     <span style="background: #262730; padding: 6px 12px; border-radius: 6px;"><b>1.</b> Discovery</span>
@@ -891,4 +946,4 @@ with tab4:
 
 # Footer
 st.divider()
-st.caption("Multi-LLM Topics • Built with Streamlit")
+st.caption("Multi-LLM Topics • [GitHub](https://github.com/tomvannuenen/multi-llm-topics) • Built with Streamlit")
