@@ -243,7 +243,7 @@ def get_client():
     return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
 
-def process_single_post(client, model, post_text, topics, lock):
+def process_single_post(client, model, post_text, topics, lock, errors):
     """Process a single post for topic discovery."""
     try:
         # Handle None or non-string values
@@ -257,19 +257,42 @@ def process_single_post(client, model, post_text, topics, lock):
                                       for t, d in topics.items()) if topics else "(No topics yet)"
 
         prompt = st.session_state["discovery_prompt"].format(topics=topics_formatted, post=post_text[:6000])
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
+
+        # Try with JSON mode first, fall back to regular mode
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+        except Exception as e:
+            # Some models don't support JSON mode, try without it
+            if "json" in str(e).lower() or "response_format" in str(e).lower():
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=200,
+                    temperature=0.0,
+                )
+            else:
+                raise
 
         content = response.choices[0].message.content
         if not content:
+            with lock:
+                errors.append("Empty response from model")
             return "", False
 
-        parsed = json.loads(content.strip())
+        # Try to extract JSON from response (handle markdown code blocks)
+        clean_content = content.strip()
+        if clean_content.startswith("```"):
+            clean_content = clean_content[clean_content.find("\n")+1:]
+            if clean_content.endswith("```"):
+                clean_content = clean_content[:-3].strip()
+
+        parsed = json.loads(clean_content)
         if isinstance(parsed, list):
             parsed = parsed[0] if parsed else {}
 
@@ -279,6 +302,8 @@ def process_single_post(client, model, post_text, topics, lock):
             topic = re.sub(r'_+', '_', topic).strip('_')
 
         if not topic:
+            with lock:
+                errors.append(f"No topic in response: {content[:100]}")
             return "", False
 
         action = parsed.get("action", "existing")
@@ -295,7 +320,13 @@ def process_single_post(client, model, post_text, topics, lock):
                 topics[topic] = {"description": description, "count": 1}
                 return topic, True
 
-    except Exception:
+    except json.JSONDecodeError as e:
+        with lock:
+            errors.append(f"JSON parse error: {str(e)[:50]}")
+        return "", False
+    except Exception as e:
+        with lock:
+            errors.append(f"Error: {str(e)[:100]}")
         return "", False
 
 
@@ -304,6 +335,7 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
     """Run topic discovery on texts with early stopping."""
     sample = texts[:n_samples] if len(texts) > n_samples else texts
     topics = {}
+    errors = []
     lock = threading.Lock()
 
     total = len(sample)
@@ -319,7 +351,7 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
         new_in_batch = 0
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(process_single_post, client, model, text, topics, lock): i
+            futures = {executor.submit(process_single_post, client, model, text, topics, lock, errors): i
                        for i, text in enumerate(batch_texts)}
 
             for future in as_completed(futures):
@@ -330,7 +362,8 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
                     new_in_batch += 1
 
                 progress_bar.progress(completed / total)
-                status_text.text(f"Processed {completed}/{total} documents | {len(topics)} topics ({new_topics_total} new)")
+                error_info = f" | {len(errors)} errors" if errors else ""
+                status_text.text(f"Processed {completed}/{total} documents | {len(topics)} topics ({new_topics_total} new){error_info}")
 
         # Check early stopping
         if new_in_batch == 0:
@@ -345,7 +378,8 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
     if not early_stopped:
         status_text.text(f"Complete: {len(topics)} topics from {completed} documents")
 
-    return topics
+    # Return errors for display
+    return topics, errors
 
 
 def run_consolidation(client, model, topics, progress_bar, status_text):
@@ -792,7 +826,15 @@ with tab1:
                 progress = st.progress(0)
                 status = st.empty()
 
-                topics = run_discovery(client, model, texts, n_samples, progress, status)
+                topics, errors = run_discovery(client, model, texts, n_samples, progress, status)
+
+                # Show errors if any
+                if errors:
+                    with st.expander(f"⚠️ {len(errors)} errors occurred", expanded=False):
+                        for err in errors[:10]:  # Show first 10
+                            st.caption(err)
+                        if len(errors) > 10:
+                            st.caption(f"... and {len(errors) - 10} more")
 
                 # Merge topics
                 for t, data in topics.items():
