@@ -98,11 +98,31 @@ def fetch_openrouter_models():
                         "prompt_cost": prompt_cost,  # $ per 1M tokens
                         "completion_cost": completion_cost,
                         "context_length": m.get("context_length", 0),
+                        "is_free": ":free" in model_id,
                     }
             return model_info
     except Exception as e:
         st.warning(f"Could not fetch models from OpenRouter: {e}")
     return {}
+
+
+def sort_models_for_task(models: dict, task: str = "discovery") -> list:
+    """Sort models: free first, then by price (cheap first for fast tasks, expensive first for reasoning)."""
+    model_list = list(models.keys())
+
+    def sort_key(model_id):
+        info = models.get(model_id, {})
+        is_free = info.get("is_free", ":free" in model_id)
+        total_cost = info.get("prompt_cost", 0) + info.get("completion_cost", 0)
+
+        if task == "consolidation":
+            # For consolidation, prefer stronger (more expensive) models, but free first
+            return (0 if is_free else 1, -total_cost)
+        else:
+            # For discovery/assignment, prefer cheaper models, free first
+            return (0 if is_free else 1, total_cost)
+
+    return sorted(model_list, key=sort_key)
 
 
 def estimate_tokens(text: str) -> int:
@@ -167,9 +187,8 @@ def format_cost(cost: float) -> str:
 def get_models_by_category():
     """Get models organized for different use cases."""
     all_models_info = fetch_openrouter_models()
-    all_models = sorted(all_models_info.keys())
 
-    if not all_models:
+    if not all_models_info:
         return {
             "all": DEFAULT_DISCOVERY_MODELS + DEFAULT_CONSOLIDATION_MODELS + DEFAULT_ASSIGNMENT_MODELS,
             "discovery": DEFAULT_DISCOVERY_MODELS,
@@ -178,13 +197,16 @@ def get_models_by_category():
             "pricing": {},
         }
 
+    # Sort models: free first, then by price
+    all_models_sorted = sort_models_for_task(all_models_info, "discovery")
+
     # Categorize models
-    fast_models = [m for m in all_models if any(x in m.lower() for x in ["flash", "haiku", "mini", "nano", "lite", "8b", "7b"])]
-    strong_models = [m for m in all_models if any(x in m.lower() for x in ["sonnet", "opus", "gpt-4", "claude-3", "gemini-pro", "gemini-2"])]
+    fast_models = [m for m in all_models_sorted if any(x in m.lower() for x in ["flash", "haiku", "mini", "nano", "lite", "8b", "7b", ":free"])]
+    strong_models = [m for m in all_models_sorted if any(x in m.lower() for x in ["sonnet", "opus", "gpt-4", "claude-3", "gemini-pro", "gemini-2", ":free"])]
 
     return {
-        "all": all_models,
-        "discovery": fast_models if fast_models else all_models[:20],
+        "all": all_models_sorted,
+        "discovery": fast_models if fast_models else all_models_sorted[:20],
         "consolidation": strong_models if strong_models else all_models[:10],
         "assignment": fast_models if fast_models else all_models[:20],
         "pricing": all_models_info,
@@ -789,9 +811,9 @@ with tab1:
         **Recommended approach:**
         - Select 3-5 diverse models (different providers)
         - Use 200-500 documents per model for good coverage
-        - Cheap/fast models work well for discovery (Gemini Flash, GPT-4.1-nano, Claude Haiku)
+        - Fast/cheap models work well — look for models with `:free` suffix
 
-        **Cost:** Discovery is cheap (~$0.01-0.05 per 100 docs with fast models)
+        **Cost:** Discovery is cheap (~$0.01-0.05 per 100 docs), or free with `:free` models
         """)
 
     with st.expander("✏️ Customize Discovery Prompt", expanded=False):
@@ -946,7 +968,7 @@ with tab2:
         these duplicates and creates a unified taxonomy.
 
         **Recommended approach:**
-        - Use a strong reasoning model (Claude Sonnet, GPT-4.1, Gemini Pro)
+        - Use a strong reasoning model (larger models work better for semantic merging)
         - Target 50-80 final categories for most datasets
         - Review the output and adjust if needed
 
@@ -1008,7 +1030,7 @@ with tab2:
                 "Consolidation Model",
                 consolidation_models,
                 index=default_idx,
-                help="Use a strong reasoning model. Claude Sonnet or GPT-4.1 work well for semantic merging."
+                help="Use a strong reasoning model. Larger models work better for semantic merging."
             )
         with col2:
             st.metric("Topics to Consolidate", len(topics))
@@ -1050,7 +1072,7 @@ with tab3:
         The model selects a primary topic and optionally 1-2 secondary topics.
 
         **Recommended approach:**
-        - Use a fast, cheap model (Gemini Flash Lite, GPT-4.1-nano)
+        - Use a fast, cheap model — or a `:free` model for testing
         - Assignment is the most expensive step (one API call per document)
         - Use 10 workers for parallel processing (built-in)
 
