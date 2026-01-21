@@ -528,16 +528,18 @@ with st.sidebar:
                         st.session_state["api_key_valid"] = True
                         data = response.json().get("data", {})
                         # Show credit balance if available
-                        usage = data.get("usage", 0)
-                        limit = data.get("limit")
-                        limit_remaining = data.get("limit_remaining")
-                        if limit_remaining is not None:
-                            st.success(f"✓ API key valid — ${limit_remaining:.2f} credits remaining")
-                        elif limit:
+                        # See: https://openrouter.ai/docs/api/reference/authentication
+                        usage = data.get("usage", 0)  # Credits used
+                        limit = data.get("limit")      # Credit limit (null if unlimited)
+                        is_free_tier = data.get("is_free_tier", False)
+
+                        if limit is not None:
                             remaining = limit - usage
-                            st.success(f"✓ API key valid — ${remaining:.2f} credits remaining")
+                            st.success(f"✓ Valid — ${remaining:.2f} of ${limit:.2f} credits remaining")
+                        elif usage > 0:
+                            st.success(f"✓ Valid — ${usage:.2f} credits used")
                         else:
-                            st.success("✓ API key valid (pay-as-you-go)")
+                            st.success("✓ API key valid")
                     else:
                         st.session_state["api_key_valid"] = False
                         st.error("Invalid API key")
