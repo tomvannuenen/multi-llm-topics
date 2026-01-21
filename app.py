@@ -459,8 +459,35 @@ with st.sidebar:
         help="Get your key at [openrouter.ai](https://openrouter.ai)"
     )
     if api_key:
-        st.session_state["api_key"] = api_key
-        st.success("API key set")
+        # Only validate if key changed
+        if api_key != st.session_state.get("api_key_validated", ""):
+            with st.spinner("Validating API key..."):
+                try:
+                    response = requests.get(
+                        "https://openrouter.ai/api/v1/auth/key",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        timeout=10
+                    )
+                    if response.status_code == 200:
+                        st.session_state["api_key"] = api_key
+                        st.session_state["api_key_validated"] = api_key
+                        st.session_state["api_key_valid"] = True
+                        data = response.json().get("data", {})
+                        # Show credit balance if available
+                        usage = data.get("usage", 0)
+                        limit = data.get("limit")
+                        if limit:
+                            st.success(f"API key valid (${usage:.2f} / ${limit:.2f} used)")
+                        else:
+                            st.success("API key valid")
+                    else:
+                        st.session_state["api_key_valid"] = False
+                        st.error("Invalid API key")
+                except Exception as e:
+                    st.session_state["api_key_valid"] = False
+                    st.error(f"Could not validate key: {e}")
+        elif st.session_state.get("api_key_valid"):
+            st.success("API key valid")
 
     st.divider()
 
