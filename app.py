@@ -471,12 +471,32 @@ def process_single_post(client, model, post_text, topics, lock, errors, discover
                 errors.append("Empty response from model")
             return "", False
 
-        # Try to extract JSON from response (handle markdown code blocks)
+        # Try to extract JSON from response (handle markdown code blocks and extra text)
         clean_content = content.strip()
+
+        # Remove markdown code blocks
         if clean_content.startswith("```"):
             clean_content = clean_content[clean_content.find("\n")+1:]
-            if clean_content.endswith("```"):
-                clean_content = clean_content[:-3].strip()
+            if "```" in clean_content:
+                clean_content = clean_content[:clean_content.find("```")].strip()
+
+        # Try to find first complete JSON object using brace matching
+        brace_count = 0
+        start_idx = None
+        end_idx = None
+        for i, char in enumerate(clean_content):
+            if char == '{':
+                if start_idx is None:
+                    start_idx = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_idx is not None:
+                    end_idx = i + 1
+                    break
+
+        if start_idx is not None and end_idx is not None:
+            clean_content = clean_content[start_idx:end_idx]
 
         parsed = json.loads(clean_content)
         if isinstance(parsed, list):
@@ -666,12 +686,33 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
             if not content:
                 return {"id": doc_id, "error": "empty_response"}
 
-            # Handle markdown code blocks
+            # Handle markdown code blocks and extra text
             clean_content = content.strip()
+
+            # Remove markdown code blocks
             if clean_content.startswith("```"):
                 clean_content = clean_content[clean_content.find("\n")+1:]
-                if clean_content.endswith("```"):
-                    clean_content = clean_content[:-3].strip()
+                if "```" in clean_content:
+                    clean_content = clean_content[:clean_content.find("```")].strip()
+
+            # Try to find JSON object in the response (handles extra text before/after)
+            # Use a more robust pattern that handles nested structures
+            brace_count = 0
+            start_idx = None
+            end_idx = None
+            for i, char in enumerate(clean_content):
+                if char == '{':
+                    if start_idx is None:
+                        start_idx = i
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx is not None:
+                        end_idx = i + 1
+                        break
+
+            if start_idx is not None and end_idx is not None:
+                clean_content = clean_content[start_idx:end_idx]
 
             result = json.loads(clean_content)
             primary = result.get("primary_topic", "")
