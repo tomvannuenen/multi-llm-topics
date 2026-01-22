@@ -687,15 +687,9 @@ with st.sidebar:
 
         if not ollama_available:
             # Show message for online/cloud users
-            st.info("**Ollama requires running the app locally.**")
-            st.markdown("""
-            To use free local models:
-            1. Clone the repo: `git clone https://github.com/tomvannuenen/multi-llm-topics`
-            2. Install [Ollama](https://ollama.com) and pull models
-            3. Run: `streamlit run app.py`
-
-            See the [README](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free) for detailed instructions.
-            """)
+            st.info("**Run the app locally to use Ollama.**")
+            st.caption("Clone the repo, install [Ollama](https://ollama.com), then run `streamlit run app.py`")
+            st.caption("[Setup instructions →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
         else:
             # Ollama is available - show enable checkbox
             ollama_enabled = st.checkbox(
