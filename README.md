@@ -130,6 +130,62 @@ The pipeline includes three human-in-the-loop verification stages:
    - 👍/👎 ratings to assess quality
    - Informational only (doesn't block export)
 
+### Structured Prompts
+
+Each pipeline stage uses a customizable prompt that instructs the LLM how to respond. You can edit these prompts in the app's "Advanced" expander for each stage.
+
+#### Discovery Prompt
+
+The discovery prompt is called once per document sample. It receives:
+- `{topics}` — List of already-discovered topics (grows as discovery progresses)
+- `{post}` — The document text to analyze
+
+The LLM must return JSON with:
+```json
+{"action": "existing" or "new", "topic": "topic_label", "description": "..."}
+```
+
+The prompt encourages reusing existing topics when appropriate, creating new ones only when needed. Topic labels should be descriptive, generalizable, and use `lowercase_with_underscores` format.
+
+#### Consolidation Prompt
+
+The consolidation prompt is called once with all discovered topics. It receives:
+- `{n_topics}` — Number of raw topics
+- `{topics}` — All discovered topics with descriptions
+
+The LLM must return JSON with:
+```json
+{
+  "taxonomy": [
+    {"topic": "label", "description": "...", "source_topics": ["merged", "topics"]}
+  ],
+  "unmapped": []
+}
+```
+
+The prompt instructs the LLM to merge semantically equivalent topics while preserving meaningful distinctions, aiming for 50-80 final categories.
+
+#### Assignment Prompt
+
+The assignment prompt is called once per document. It receives:
+- `{n_topics}` — Number of taxonomy categories
+- `{taxonomy}` — The consolidated taxonomy with descriptions
+- `{post}` — The document text to classify
+
+The LLM must return JSON with:
+```json
+{"primary_topic": "main_topic", "secondary_topics": ["other1"], "reasoning": "..."}
+```
+
+The prompt instructs the LLM to select 1-3 topics per document, prioritizing the primary topic and only adding secondary topics if clearly applicable.
+
+#### Customization Tips
+
+- **Domain-specific examples**: Replace the generic topic examples with ones from your domain
+- **Granularity**: Adjust "aim for 50-80 final topics" to control taxonomy size
+- **Topic format**: Change `lowercase_with_underscores` to another format if preferred
+- **Assignment strictness**: Modify rules to allow more or fewer topics per document
+
 ## Installation
 
 ```bash
