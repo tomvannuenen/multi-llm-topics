@@ -1013,7 +1013,7 @@ if "data" not in st.session_state:
 
     st.info("👈 **Get started:** Complete steps 1-2 in the sidebar, then run the pipeline in the tabs below.")
 
-    with st.expander("📖 How does this tool work?", expanded=False):
+    with st.expander("📖 How This Tool Works", expanded=False):
         st.markdown("""
         ### Why use multiple LLMs for topic discovery?
 
