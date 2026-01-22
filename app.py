@@ -48,6 +48,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# Initialize welcome_dismissed early to prevent dialog from reopening on reruns
+if "welcome_dismissed" not in st.session_state:
+    st.session_state["welcome_dismissed"] = False
+
+
 # Welcome dialog for first-time visitors
 @st.dialog("Welcome to Multi-LLM Topics", width="large")
 def show_welcome_dialog():
@@ -93,9 +98,10 @@ def show_welcome_dialog():
             st.rerun()
 
 
-# Show welcome dialog on first visit
-if "welcome_dismissed" not in st.session_state:
+# Show welcome dialog on first visit only
+if not st.session_state["welcome_dismissed"]:
     show_welcome_dialog()
+    st.session_state["welcome_dismissed"] = True  # Mark as shown immediately
 
 
 # Default recommended models (used if API fetch fails)
