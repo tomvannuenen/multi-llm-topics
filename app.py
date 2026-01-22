@@ -826,14 +826,14 @@ if "data" not in st.session_state:
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("#### 🔑 Step 1")
-        st.caption("Get an API key from [OpenRouter](https://openrouter.ai) — free to sign up")
+        st.markdown("**🔑 Get API key**")
+        st.caption("From [OpenRouter](https://openrouter.ai) — free to sign up")
     with col2:
-        st.markdown("#### 📄 Step 2")
-        st.caption("Upload a CSV file with a text column, or load the sample data")
+        st.markdown("**📄 Upload data**")
+        st.caption("CSV file with a text column, or load sample data")
     with col3:
-        st.markdown("#### ▶️ Step 3")
-        st.caption("Run Discovery → Consolidation → Assignment, then download results")
+        st.markdown("**▶️ Run pipeline**")
+        st.caption("Discovery → Consolidation → Assignment → Download")
 
     st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. Or enable [Ollama](https://ollama.com) in the sidebar to run models locally for free.")
 
