@@ -1248,6 +1248,8 @@ with st.sidebar:
                 ollama_models = fetch_ollama_models(ollama_url)
                 if ollama_models:
                     st.success(f"✓ {len(ollama_models)} local models")
+                    st.caption("⚡ **Speed note:** Local models are slower than cloud APIs. "
+                               "Speed depends on your hardware (GPU helps significantly).")
 
     st.divider()
 
@@ -1731,6 +1733,13 @@ with tab1:
         st.warning(f"**Free model limits:** {len(free_models_selected)} free model(s) selected. "
                    f"Free models have daily caps (50 req/day, or 1000 with $10+ balance) and are rate-limited to 20 req/min. "
                    f"They work for testing but may be slow for large datasets.")
+
+    # Show info if local models selected
+    local_models_selected = [m for m in selected_models if m.startswith("ollama/")]
+    if local_models_selected and not free_models_selected:  # Don't double-warn
+        st.info(f"**Local models:** {len(local_models_selected)} Ollama model(s) selected. "
+                f"Local inference is slower than cloud APIs — speed depends on your hardware (GPU recommended). "
+                f"Consider using fewer documents per model or a smaller model like `llama3.2:3b`.")
 
     # Show existing results or run button
     if "discovered_topics" in st.session_state and not st.session_state.get("discovery_running"):
