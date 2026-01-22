@@ -648,6 +648,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
 # Sidebar
 with st.sidebar:
     st.markdown("## Multi-LLM Topics")
+    st.caption("by [Tom van Nuenen](https://tomvannuenen.github.io) · [GitHub](https://github.com/tomvannuenen)")
 
     # --- DATA SECTION ---
     st.subheader("📄 Data")
