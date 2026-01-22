@@ -1,5 +1,9 @@
 # Multi-LLM Topics: Ensemble Topic Discovery
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multi-llm-topics.streamlit.app)
+
+**Try it now:** [multi-llm-topics.streamlit.app](https://multi-llm-topics.streamlit.app) — A web app for discovering topics in your text data using multiple AI models. Upload a CSV, select your models, and download labeled results. No installation required.
+
 > **Work in Progress.** This tool is under active development. The core pipeline works, but expect rough edges and changes.
 
 A topic modeling approach that uses multiple LLMs to discover, consolidate, and assign topics from text corpora. By leveraging diverse models from different providers, this approach produces more robust and comprehensive topic taxonomies than any single model.
