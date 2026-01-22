@@ -1168,7 +1168,7 @@ with tab1:
         """)
 
     with st.expander("✏️ Customize Discovery Prompt", expanded=False):
-        st.caption("Edit the prompt used to discover topics. Use `{topics}` for existing topics and `{post}` for the document text.")
+        st.caption("Edit the prompt used to discover topics. **Required placeholders:** `{topics}` (existing topics) and `{post}` (document text).")
         edited_discovery = st.text_area(
             "Discovery Prompt",
             value=st.session_state["discovery_prompt"],
@@ -1176,6 +1176,16 @@ with tab1:
             key="discovery_prompt_editor",
             label_visibility="collapsed"
         )
+
+        # Validate placeholders
+        missing = []
+        if "{topics}" not in edited_discovery:
+            missing.append("{topics}")
+        if "{post}" not in edited_discovery:
+            missing.append("{post}")
+        if missing:
+            st.warning(f"⚠️ Missing required placeholder(s): {', '.join(missing)}. The prompt may not work correctly.")
+
         col_reset, col_save = st.columns([1, 1])
         with col_reset:
             if st.button("Reset to Default", key="reset_discovery"):
@@ -1579,7 +1589,7 @@ with tab2:
         """)
 
     with st.expander("✏️ Customize Consolidation Prompt", expanded=False):
-        st.caption("Edit the prompt used to consolidate topics. Use `{n_topics}` for topic count and `{topics}` for the topic list.")
+        st.caption("Edit the prompt used to consolidate topics. **Required placeholders:** `{n_topics}` (topic count) and `{topics}` (topic list).")
         edited_consolidation = st.text_area(
             "Consolidation Prompt",
             value=st.session_state["consolidation_prompt"],
@@ -1587,6 +1597,16 @@ with tab2:
             key="consolidation_prompt_editor",
             label_visibility="collapsed"
         )
+
+        # Validate placeholders
+        missing = []
+        if "{n_topics}" not in edited_consolidation:
+            missing.append("{n_topics}")
+        if "{topics}" not in edited_consolidation:
+            missing.append("{topics}")
+        if missing:
+            st.warning(f"⚠️ Missing required placeholder(s): {', '.join(missing)}. The prompt may not work correctly.")
+
         col_reset, col_save = st.columns([1, 1])
         with col_reset:
             if st.button("Reset to Default", key="reset_consolidation"):
@@ -1806,7 +1826,7 @@ with tab3:
         """)
 
     with st.expander("✏️ Customize Assignment Prompt", expanded=False):
-        st.caption("Edit the prompt used to assign topics. Use `{n_topics}` for topic count, `{taxonomy}` for the taxonomy, and `{post}` for the document.")
+        st.caption("Edit the prompt used to assign topics. **Required placeholders:** `{n_topics}` (topic count), `{taxonomy}` (taxonomy list), and `{post}` (document text).")
         edited_assignment = st.text_area(
             "Assignment Prompt",
             value=st.session_state["assignment_prompt"],
@@ -1814,6 +1834,18 @@ with tab3:
             key="assignment_prompt_editor",
             label_visibility="collapsed"
         )
+
+        # Validate placeholders
+        missing = []
+        if "{n_topics}" not in edited_assignment:
+            missing.append("{n_topics}")
+        if "{taxonomy}" not in edited_assignment:
+            missing.append("{taxonomy}")
+        if "{post}" not in edited_assignment:
+            missing.append("{post}")
+        if missing:
+            st.warning(f"⚠️ Missing required placeholder(s): {', '.join(missing)}. The prompt may not work correctly.")
+
         col_reset, col_save = st.columns([1, 1])
         with col_reset:
             if st.button("Reset to Default", key="reset_assignment"):
