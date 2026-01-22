@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial release: Multi-LLM topic discovery tool\n\n- Streamlit GUI (app.py) for interactive topic modeling\n- CLI scripts for discovery, consolidation, and assignment\n- Support for multiple LLM providers via OpenRouter\n- Embedding-based validation for comparing consolidation approaches\n- Sample data included for testing\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:openrouter.ai)",
+      "WebFetch(domain:docs.streamlit.io)",
+      "Bash(python3:*)"
+    ]
+  }
+}

@@ -17,10 +17,31 @@ from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
 from openai import OpenAI
+
+# Optional imports for embedding visualization
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+
+try:
+    from sentence_transformers import SentenceTransformer
+    EMBEDDINGS_AVAILABLE = True
+except ImportError:
+    EMBEDDINGS_AVAILABLE = False
+
+try:
+    import umap
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
 
 # Page config
 st.set_page_config(
@@ -835,6 +856,238 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
         del st.session_state["assignments_partial"]
 
     return results
+
+
+@st.cache_resource
+def get_embedding_model():
+    """Load the embedding model (cached to avoid reloading)."""
+    if not EMBEDDINGS_AVAILABLE:
+        return None
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
+
+def create_topic_embedding_viz(topics: dict) -> go.Figure | None:
+    """Create an interactive 2D embedding visualization of topics.
+
+    Args:
+        topics: Dictionary of {topic_name: {description, count, models}}
+
+    Returns:
+        Plotly figure or None if dependencies unavailable
+    """
+    if not all([PLOTLY_AVAILABLE, EMBEDDINGS_AVAILABLE, UMAP_AVAILABLE]):
+        return None
+
+    if len(topics) < 5:
+        return None  # Need enough points for meaningful visualization
+
+    # Prepare data
+    topic_names = list(topics.keys())
+    descriptions = [topics[t].get("description", t) for t in topic_names]
+    counts = [topics[t].get("count", 1) for t in topic_names]
+    n_models = [len(topics[t].get("models", [])) for t in topic_names]
+
+    # Create text for embedding (topic name + description)
+    texts_for_embedding = [f"{name}: {desc}" for name, desc in zip(topic_names, descriptions)]
+
+    # Generate embeddings
+    model = get_embedding_model()
+    if model is None:
+        return None
+
+    with st.spinner("Generating embeddings..."):
+        embeddings = model.encode(texts_for_embedding, show_progress_bar=False)
+
+    # Reduce to 2D with UMAP
+    with st.spinner("Computing layout..."):
+        n_neighbors = min(15, len(topics) - 1)
+        reducer = umap.UMAP(
+            n_neighbors=n_neighbors,
+            min_dist=0.1,
+            n_components=2,
+            metric='cosine',
+            random_state=42
+        )
+        coords_2d = reducer.fit_transform(embeddings)
+
+    # Create DataFrame for plotting
+    df = pd.DataFrame({
+        'topic': topic_names,
+        'description': descriptions,
+        'x': coords_2d[:, 0],
+        'y': coords_2d[:, 1],
+        'count': counts,
+        'n_models': n_models,
+        'models': [", ".join(topics[t].get("models", [])) for t in topic_names],
+    })
+
+    # Normalize sizes for better visualization
+    size_min, size_max = 8, 30
+    if max(counts) > min(counts):
+        df['size'] = size_min + (size_max - size_min) * (df['count'] - min(counts)) / (max(counts) - min(counts))
+    else:
+        df['size'] = (size_min + size_max) / 2
+
+    # Create figure
+    fig = px.scatter(
+        df,
+        x='x',
+        y='y',
+        size='size',
+        color='n_models',
+        color_continuous_scale='Viridis',
+        hover_name='topic',
+        hover_data={
+            'description': True,
+            'count': True,
+            'models': True,
+            'n_models': True,
+            'x': False,
+            'y': False,
+            'size': False,
+        },
+        labels={
+            'n_models': 'Models',
+            'count': 'Frequency',
+            'description': 'Description',
+            'models': 'Found by',
+        },
+    )
+
+    fig.update_layout(
+        title="Topic Embedding Space",
+        xaxis_title="",
+        yaxis_title="",
+        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+        coloraxis_colorbar=dict(title="# Models"),
+        height=500,
+        margin=dict(l=20, r=20, t=40, b=20),
+    )
+
+    # Make points more visible
+    fig.update_traces(
+        marker=dict(
+            line=dict(width=1, color='white'),
+            opacity=0.8,
+        )
+    )
+
+    return fig
+
+
+def create_taxonomy_embedding_viz(taxonomy: list, assignments_df: pd.DataFrame = None) -> go.Figure | None:
+    """Create an interactive 2D embedding visualization of taxonomy categories.
+
+    Args:
+        taxonomy: List of {topic, description, source_topics}
+        assignments_df: Optional DataFrame with assignment counts
+
+    Returns:
+        Plotly figure or None if dependencies unavailable
+    """
+    if not all([PLOTLY_AVAILABLE, EMBEDDINGS_AVAILABLE, UMAP_AVAILABLE]):
+        return None
+
+    if len(taxonomy) < 5:
+        return None
+
+    # Prepare data
+    topic_names = [t["topic"] for t in taxonomy]
+    descriptions = [t.get("description", t["topic"]) for t in taxonomy]
+    n_source = [len(t.get("source_topics", [])) for t in taxonomy]
+
+    # Count assignments per category if available
+    if assignments_df is not None and "primary_topic" in assignments_df.columns:
+        counts = assignments_df["primary_topic"].value_counts().to_dict()
+        assignment_counts = [counts.get(t, 0) for t in topic_names]
+    else:
+        assignment_counts = n_source  # Use source topic count as proxy
+
+    # Create text for embedding
+    texts_for_embedding = [f"{name}: {desc}" for name, desc in zip(topic_names, descriptions)]
+
+    # Generate embeddings
+    model = get_embedding_model()
+    if model is None:
+        return None
+
+    with st.spinner("Generating taxonomy embeddings..."):
+        embeddings = model.encode(texts_for_embedding, show_progress_bar=False)
+
+    # Reduce to 2D with UMAP
+    with st.spinner("Computing layout..."):
+        n_neighbors = min(15, len(taxonomy) - 1)
+        reducer = umap.UMAP(
+            n_neighbors=n_neighbors,
+            min_dist=0.1,
+            n_components=2,
+            metric='cosine',
+            random_state=42
+        )
+        coords_2d = reducer.fit_transform(embeddings)
+
+    # Create DataFrame for plotting
+    df = pd.DataFrame({
+        'category': topic_names,
+        'description': descriptions,
+        'x': coords_2d[:, 0],
+        'y': coords_2d[:, 1],
+        'documents': assignment_counts,
+        'source_topics': n_source,
+    })
+
+    # Normalize sizes
+    size_min, size_max = 10, 35
+    count_vals = df['documents'].values
+    if max(count_vals) > min(count_vals):
+        df['size'] = size_min + (size_max - size_min) * (count_vals - min(count_vals)) / (max(count_vals) - min(count_vals))
+    else:
+        df['size'] = (size_min + size_max) / 2
+
+    # Create figure
+    fig = px.scatter(
+        df,
+        x='x',
+        y='y',
+        size='size',
+        color='documents',
+        color_continuous_scale='Blues',
+        hover_name='category',
+        hover_data={
+            'description': True,
+            'documents': True,
+            'source_topics': True,
+            'x': False,
+            'y': False,
+            'size': False,
+        },
+        labels={
+            'documents': 'Documents',
+            'source_topics': 'Merged Topics',
+            'description': 'Description',
+        },
+    )
+
+    fig.update_layout(
+        title="Taxonomy Embedding Space",
+        xaxis_title="",
+        yaxis_title="",
+        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+        coloraxis_colorbar=dict(title="Docs"),
+        height=500,
+        margin=dict(l=20, r=20, t=40, b=20),
+    )
+
+    fig.update_traces(
+        marker=dict(
+            line=dict(width=1, color='white'),
+            opacity=0.8,
+        )
+    )
+
+    return fig
 
 
 def get_step_state():
@@ -1690,6 +1943,14 @@ with tab1:
                 }).set_index("Model")
                 st.bar_chart(model_df, horizontal=True)
 
+            # Embedding visualization
+            if PLOTLY_AVAILABLE and EMBEDDINGS_AVAILABLE and UMAP_AVAILABLE and len(all_topics) >= 5:
+                with st.expander("🗺️ Topic Embedding Map", expanded=True):
+                    st.caption("Topics positioned by semantic similarity. Hover for details. Size = frequency, color = # models.")
+                    fig = create_topic_embedding_viz(all_topics)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+
             # Full topic table
             with st.expander("📋 All Topics", expanded=False):
                 st.dataframe(
@@ -1729,6 +1990,14 @@ with tab1:
             st.session_state["topic_selection"] = {t: False for t in topics.keys()}
         if select_multi:
             st.session_state["topic_selection"] = {t: len(d["models"]) > 1 for t, d in topics.items()}
+
+        # Embedding visualization (helps identify semantic clusters)
+        if PLOTLY_AVAILABLE and EMBEDDINGS_AVAILABLE and UMAP_AVAILABLE and len(topics) >= 5:
+            with st.expander("🗺️ Topic Embedding Map", expanded=False):
+                st.caption("Semantic similarity map — nearby topics may be redundant. Size = frequency, color = # models.")
+                fig = create_topic_embedding_viz(topics)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
 
         # Display topics in columns with checkboxes
         st.caption(f"**{len(sorted_topics)} topics** — check to include, uncheck to exclude")
@@ -2407,6 +2676,17 @@ with tab4:
             st.caption("No assignments yet")
 
     st.divider()
+
+    # Taxonomy visualization
+    taxonomy_for_viz = st.session_state.get("approved_taxonomy") or st.session_state.get("taxonomy")
+    results_df_for_viz = st.session_state.get("results_df")
+
+    if taxonomy_for_viz and PLOTLY_AVAILABLE and EMBEDDINGS_AVAILABLE and UMAP_AVAILABLE and len(taxonomy_for_viz) >= 5:
+        with st.expander("🗺️ Taxonomy Embedding Map", expanded=False):
+            st.caption("Category positions based on semantic similarity. Size/color = document count.")
+            fig = create_taxonomy_embedding_viz(taxonomy_for_viz, results_df_for_viz)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
 
     # Show data preview with original text
     if "results_df" in st.session_state:
