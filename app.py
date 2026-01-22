@@ -1013,14 +1013,6 @@ if "data" not in st.session_state:
 
     st.info("👈 **Get started:** Complete steps 1-2 in the sidebar, then run the pipeline in the tabs below.")
 
-    st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. Or enable [Ollama](https://ollama.com) in the sidebar to run models locally for free.")
-
-    st.warning("""
-    **Free model limits:** Free models on OpenRouter have daily caps (50 requests/day, or 1000/day with $10+ account balance)
-    and are rate-limited to 20 requests/minute. They're great for testing but may be too slow for large datasets.
-    Consider cheap paid models like `gemini-2.0-flash-001` (~$0.01 per 100 docs) for production use.
-    """)
-
     with st.expander("📖 How does this tool work?", expanded=False):
         st.markdown("""
         ### Why use multiple LLMs for topic discovery?
@@ -1173,9 +1165,6 @@ with tab1:
         found by 2+ models (more robust).
 
         **Cost:** Discovery is cheap (~$0.01-0.05 per 100 docs), or free with `:free` models
-
-        **Free model limits:** `:free` models are rate-limited (20 req/min, 50/day without $10+ balance).
-        They work for small tests but are slower. For larger datasets, cheap paid models are faster.
         """)
 
     with st.expander("✏️ Customize Discovery Prompt", expanded=False):
@@ -1294,6 +1283,13 @@ with tab1:
             avg_tokens = get_avg_doc_tokens(st.session_state["data"], st.session_state["text_column"])
         total_cost = sum(get_model_cost_estimate(m, n_samples, "discovery", avg_tokens) for m in selected_models)
         st.metric("Est. Cost", format_cost(total_cost))
+
+    # Show warning if free models selected
+    free_models_selected = [m for m in selected_models if ":free" in m.lower()]
+    if free_models_selected:
+        st.warning(f"**Free model limits:** {len(free_models_selected)} free model(s) selected. "
+                   f"Free models have daily caps (50 req/day, or 1000 with $10+ balance) and are rate-limited to 20 req/min. "
+                   f"They work for testing but may be slow for large datasets.")
 
     # Show existing results or run button
     if "discovered_topics" in st.session_state and not st.session_state.get("discovery_running"):
@@ -1807,10 +1803,6 @@ with tab3:
         informational only—it doesn't block export.
 
         **Cost:** ~$0.01-0.05 per 100 documents with cheap models
-
-        **Free model limits:** Assignment makes one API call per document, so free model
-        daily limits (50 req/day) can be a bottleneck. For datasets over 50 docs, consider
-        a cheap paid model like `gemini-2.0-flash-001`.
         """)
 
     with st.expander("✏️ Customize Assignment Prompt", expanded=False):
@@ -1893,6 +1885,12 @@ with tab3:
                 avg_tokens = get_avg_doc_tokens(st.session_state["data"], st.session_state["text_column"])
             cost = get_model_cost_estimate(model, n_docs, "assignment", avg_tokens)
             st.metric("Est. Cost", format_cost(cost))
+
+        # Show warning if free model selected
+        if ":free" in model.lower():
+            st.warning(f"**Free model limits:** Assignment makes one API call per document. "
+                       f"Free models have a daily cap of 50 requests (1000 with $10+ balance). "
+                       f"For {n_docs} docs, consider a cheap paid model if you hit limits.")
 
         # Show existing results or run button
         if "assignments" in st.session_state:
