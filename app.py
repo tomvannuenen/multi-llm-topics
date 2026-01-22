@@ -645,6 +645,50 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
     return results
 
 
+def get_step_state():
+    """Get the completion state of each pipeline step."""
+    return {
+        "data": "data" in st.session_state,
+        "discovery": "discovered_topics" in st.session_state,
+        "consolidation": "taxonomy" in st.session_state,
+        "assignment": "assignments" in st.session_state,
+    }
+
+
+def render_step_progress():
+    """Render a visual progress indicator for the pipeline steps."""
+    state = get_step_state()
+    cols = st.columns(4)
+    steps = [
+        ("📄", "Data", state["data"], None),
+        ("🔍", "Discovery", state["discovery"], state["data"]),
+        ("🔄", "Consolidate", state["consolidation"], state["discovery"]),
+        ("🏷️", "Assign", state["assignment"], state["consolidation"]),
+    ]
+    for i, (icon, name, done, prev_done) in enumerate(steps):
+        with cols[i]:
+            if done:
+                st.markdown(f"**{icon} :green[{name}] ✓**")
+            elif prev_done is None or prev_done:  # First step or previous complete
+                st.markdown(f"**{icon} :blue[{name}]** ←")
+            else:
+                st.markdown(f"{icon} :gray[{name}]")
+
+
+def render_results_banner():
+    """Show a banner indicating current pipeline state and next step."""
+    state = get_step_state()
+    if state["assignment"]:
+        n_docs = len(st.session_state.get("results_df", []))
+        st.success(f"**Pipeline complete!** {n_docs} documents labeled. Go to **④ Results** to download.")
+    elif state["consolidation"]:
+        n_cats = len(st.session_state.get("taxonomy", []))
+        st.info(f"**Taxonomy ready:** {n_cats} categories created. Continue to **③ Assignment**.")
+    elif state["discovery"]:
+        n_topics = len(st.session_state.get("discovered_topics", {}))
+        st.info(f"**Discovery done:** {n_topics} topics found. Continue to **② Consolidation**.")
+
+
 # Sidebar
 with st.sidebar:
     st.markdown("## Multi-LLM Topics")
@@ -912,50 +956,6 @@ def format_model_name(model_id: str) -> str:
     # Remove provider prefix for display, keep :free suffix visible
     name = model_id.split("/")[-1] if "/" in model_id else model_id
     return name
-
-
-def get_step_state():
-    """Get the completion state of each pipeline step."""
-    return {
-        "data": "data" in st.session_state,
-        "discovery": "discovered_topics" in st.session_state,
-        "consolidation": "taxonomy" in st.session_state,
-        "assignment": "assignments" in st.session_state,
-    }
-
-
-def render_step_progress():
-    """Render a visual progress indicator for the pipeline steps."""
-    state = get_step_state()
-    cols = st.columns(4)
-    steps = [
-        ("📄", "Data", state["data"], None),
-        ("🔍", "Discovery", state["discovery"], state["data"]),
-        ("🔄", "Consolidate", state["consolidation"], state["discovery"]),
-        ("🏷️", "Assign", state["assignment"], state["consolidation"]),
-    ]
-    for i, (icon, name, done, prev_done) in enumerate(steps):
-        with cols[i]:
-            if done:
-                st.markdown(f"**{icon} :green[{name}] ✓**")
-            elif prev_done is None or prev_done:  # First step or previous complete
-                st.markdown(f"**{icon} :blue[{name}]** ←")
-            else:
-                st.markdown(f"{icon} :gray[{name}]")
-
-
-def render_results_banner():
-    """Show a banner indicating current pipeline state and next step."""
-    state = get_step_state()
-    if state["assignment"]:
-        n_docs = len(st.session_state.get("results_df", []))
-        st.success(f"**Pipeline complete!** {n_docs} documents labeled. Go to **④ Results** to download.")
-    elif state["consolidation"]:
-        n_cats = len(st.session_state.get("taxonomy", []))
-        st.info(f"**Taxonomy ready:** {n_cats} categories created. Continue to **③ Assignment**.")
-    elif state["discovery"]:
-        n_topics = len(st.session_state.get("discovered_topics", {}))
-        st.info(f"**Discovery done:** {n_topics} topics found. Continue to **② Consolidation**.")
 
 
 # Tab 1: Discovery
