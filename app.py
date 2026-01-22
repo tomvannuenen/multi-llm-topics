@@ -652,18 +652,20 @@ def get_step_state():
         "discovery": "discovered_topics" in st.session_state,
         "consolidation": "taxonomy" in st.session_state,
         "assignment": "assignments" in st.session_state,
+        "results": "results_df" in st.session_state,
     }
 
 
 def render_step_progress():
     """Render a visual progress indicator for the pipeline steps."""
     state = get_step_state()
-    cols = st.columns(4)
+    cols = st.columns(5)
     steps = [
         ("📄", "Data", state["data"], None),
-        ("🔍", "Discovery", state["discovery"], state["data"]),
+        ("🔍", "Discover", state["discovery"], state["data"]),
         ("🔄", "Consolidate", state["consolidation"], state["discovery"]),
         ("🏷️", "Assign", state["assignment"], state["consolidation"]),
+        ("📊", "Results", state["results"], state["assignment"]),
     ]
     for i, (icon, name, done, prev_done) in enumerate(steps):
         with cols[i]:
