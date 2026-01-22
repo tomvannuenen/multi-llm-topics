@@ -1063,19 +1063,48 @@ with tab1:
             st.divider()
             st.subheader("Discovery Complete!")
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total Unique Topics", len(all_topics))
+            # Summary metrics
+            multi_model_topics = sum(1 for d in all_topics.values() if len(d["models"]) > 1)
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Unique Topics", len(all_topics))
             col2.metric("Models Used", len(selected_models))
+            col3.metric("Multi-Model Topics", multi_model_topics, help="Topics found by 2+ models (more robust)")
+            col4.metric("Total Mentions", sum(d["count"] for d in all_topics.values()))
 
-            # Show topics
-            st.dataframe(
-                pd.DataFrame([
-                    {"Topic": t, "Count": d["count"], "Models": ", ".join(d["models"])}
-                    for t, d in sorted(all_topics.items(), key=lambda x: -x[1]["count"])
-                ]),
-                use_container_width=True,
-                height=400
-            )
+            # Visualizations
+            viz_col1, viz_col2 = st.columns(2)
+
+            with viz_col1:
+                st.caption("**Top 15 Topics by Frequency**")
+                top_topics = sorted(all_topics.items(), key=lambda x: -x[1]["count"])[:15]
+                topic_df = pd.DataFrame({
+                    "Topic": [t for t, _ in top_topics],
+                    "Count": [d["count"] for _, d in top_topics]
+                }).set_index("Topic")
+                st.bar_chart(topic_df, horizontal=True)
+
+            with viz_col2:
+                st.caption("**Topics per Model**")
+                model_topic_counts = {}
+                for t, d in all_topics.items():
+                    for m in d["models"]:
+                        model_topic_counts[m] = model_topic_counts.get(m, 0) + 1
+                model_df = pd.DataFrame({
+                    "Model": list(model_topic_counts.keys()),
+                    "Topics": list(model_topic_counts.values())
+                }).set_index("Model")
+                st.bar_chart(model_df, horizontal=True)
+
+            # Full topic table
+            with st.expander("📋 All Topics", expanded=False):
+                st.dataframe(
+                    pd.DataFrame([
+                        {"Topic": t, "Count": d["count"], "Models": ", ".join(d["models"])}
+                        for t, d in sorted(all_topics.items(), key=lambda x: -x[1]["count"])
+                    ]),
+                    use_container_width=True,
+                    height=400
+                )
 
             st.info("**Next step →** Go to **② Consolidation** to merge these topics into a coherent taxonomy.")
 
