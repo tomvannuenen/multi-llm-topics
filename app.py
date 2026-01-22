@@ -562,12 +562,22 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
     early_stopped = False
     user_stopped = False
 
-    # Use fewer parallel workers for free models to avoid rate limits
+    # Use fewer parallel workers for free/local models
     is_free_model = ":free" in model.lower()
-    max_workers = 3 if is_free_model else 10
+    is_local_model = model.startswith("ollama/")
+    # Local models process sequentially, so 1 worker is optimal
+    # Free cloud models have rate limits, so use 3 workers
+    if is_local_model:
+        max_workers = 1
+    elif is_free_model:
+        max_workers = 3
+    else:
+        max_workers = 10
     batch_delay = 2 if is_free_model else 0  # seconds between batches
 
-    if is_free_model:
+    if is_local_model:
+        status_text.text(f"Running locally (sequential processing — speed depends on your hardware)...")
+    elif is_free_model:
         status_text.text(f"Using rate-limited mode for free model (3 parallel requests)...")
 
     # Process in batches for early stopping
@@ -712,9 +722,16 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
     # Get the actual model name for API (strip ollama/ prefix)
     api_model = get_model_for_api(model)
 
-    # Use fewer workers for free models to avoid rate limits
-    is_free_model = ":free" in model.lower() or model.startswith("ollama/")
-    max_workers = 3 if is_free_model else 10
+    # Use fewer workers for free/local models
+    is_free_model = ":free" in model.lower()
+    is_local_model = model.startswith("ollama/")
+    # Local models process sequentially, so 1 worker is optimal
+    if is_local_model:
+        max_workers = 1
+    elif is_free_model:
+        max_workers = 3
+    else:
+        max_workers = 10
 
     results = []
     total = len(texts)
