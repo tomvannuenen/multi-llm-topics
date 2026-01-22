@@ -12,6 +12,7 @@ import json
 import os
 import re
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -345,8 +346,8 @@ def get_model_for_api(model: str) -> str:
     return model
 
 
-def process_single_post(client, model, post_text, topics, lock, errors, discovery_prompt):
-    """Process a single post for topic discovery."""
+def process_single_post(client, model, post_text, topics, lock, errors, discovery_prompt, max_retries=3):
+    """Process a single post for topic discovery with retry for rate limits."""
     try:
         # Handle None or non-string values
         if post_text is None or pd.isna(post_text):
@@ -363,26 +364,49 @@ def process_single_post(client, model, post_text, topics, lock, errors, discover
         # Get the actual model name for API (strip ollama/ prefix)
         api_model = get_model_for_api(model)
 
-        # Try with JSON mode first, fall back to regular mode
-        try:
-            response = client.chat.completions.create(
-                model=api_model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=200,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-        except Exception as e:
-            # Some models don't support JSON mode, try without it
-            if "json" in str(e).lower() or "response_format" in str(e).lower():
-                response = client.chat.completions.create(
-                    model=api_model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=200,
-                    temperature=0.0,
-                )
-            else:
-                raise
+        # Retry loop for rate limits
+        response = None
+        for attempt in range(max_retries):
+            try:
+                # Try with JSON mode first, fall back to regular mode
+                try:
+                    response = client.chat.completions.create(
+                        model=api_model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=200,
+                        temperature=0.0,
+                        response_format={"type": "json_object"},
+                    )
+                    break  # Success
+                except Exception as e:
+                    # Some models don't support JSON mode, try without it
+                    if "json" in str(e).lower() or "response_format" in str(e).lower():
+                        response = client.chat.completions.create(
+                            model=api_model,
+                            messages=[{"role": "user", "content": prompt}],
+                            max_tokens=200,
+                            temperature=0.0,
+                        )
+                        break  # Success
+                    else:
+                        raise
+            except Exception as e:
+                error_str = str(e).lower()
+                if "429" in str(e) or "rate limit" in error_str:
+                    # Rate limit - wait and retry
+                    wait_time = (attempt + 1) * 5  # 5s, 10s, 15s
+                    time.sleep(wait_time)
+                    if attempt == max_retries - 1:
+                        with lock:
+                            errors.append(f"Rate limit exceeded after {max_retries} retries")
+                        return "", False
+                else:
+                    raise
+
+        if response is None:
+            with lock:
+                errors.append("No response after retries")
+            return "", False
 
         content = response.choices[0].message.content
         if not content:
@@ -449,13 +473,21 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
     batches_without_new = 0
     early_stopped = False
 
+    # Use fewer parallel workers for free models to avoid rate limits
+    is_free_model = ":free" in model.lower()
+    max_workers = 3 if is_free_model else 10
+    batch_delay = 2 if is_free_model else 0  # seconds between batches
+
+    if is_free_model:
+        status_text.text(f"Using rate-limited mode for free model (3 parallel requests)...")
+
     # Process in batches for early stopping
     for batch_start in range(0, total, batch_size):
         batch_end = min(batch_start + batch_size, total)
         batch_texts = sample[batch_start:batch_end]
         new_in_batch = 0
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(process_single_post, client, model, text, topics, lock, errors, discovery_prompt): i
                        for i, text in enumerate(batch_texts)}
 
@@ -469,6 +501,10 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
                 progress_bar.progress(completed / total)
                 error_info = f" | {len(errors)} errors" if errors else ""
                 status_text.text(f"Processed {completed}/{total} documents | {len(topics)} topics ({new_topics_total} new){error_info}")
+
+        # Small delay between batches for free models
+        if batch_delay > 0 and batch_end < total:
+            time.sleep(batch_delay)
 
         # Check early stopping
         if new_in_batch == 0:
