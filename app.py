@@ -2146,10 +2146,43 @@ with tab4:
 
     st.divider()
 
-    # Show data preview
+    # Show data preview with original text
     if "results_df" in st.session_state:
         st.subheader("Assignment Results Preview")
-        st.dataframe(st.session_state["results_df"], use_container_width=True, height=400)
+        results_df = st.session_state["results_df"]
+
+        # Merge with original text column
+        if "data" in st.session_state and "text_column" in st.session_state:
+            df = st.session_state["data"]
+            text_col = st.session_state["text_column"]
+            id_col = st.session_state.get("id_column", "(row index)")
+
+            # Create preview dataframe with text
+            preview_data = []
+            for _, row in results_df.iterrows():
+                doc_id = row["id"]
+                # Get original text
+                if id_col == "(row index)":
+                    orig_text = df.iloc[doc_id][text_col] if doc_id < len(df) else ""
+                else:
+                    match = df[df[id_col] == doc_id]
+                    orig_text = match[text_col].iloc[0] if len(match) > 0 else ""
+
+                # Truncate text for display
+                text_preview = str(orig_text)[:200] + "..." if len(str(orig_text)) > 200 else str(orig_text)
+
+                preview_data.append({
+                    "id": doc_id,
+                    "text": text_preview,
+                    "primary_topic": row["primary_topic"],
+                    "secondary_1": row.get("secondary_1", ""),
+                    "secondary_2": row.get("secondary_2", ""),
+                })
+
+            preview_df = pd.DataFrame(preview_data)
+            st.dataframe(preview_df, use_container_width=True, height=400)
+        else:
+            st.dataframe(results_df, use_container_width=True, height=400)
 
 
 # Footer
