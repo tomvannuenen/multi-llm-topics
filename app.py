@@ -820,8 +820,10 @@ with st.sidebar:
                                 total_credits = credits_data.get("total_credits", 0)
                                 total_usage = credits_data.get("total_usage", 0)
                                 remaining = total_credits - total_usage
+                                st.session_state["api_credits"] = remaining
                                 st.success(f"✓ ${remaining:.2f} remaining")
                             else:
+                                st.session_state["api_credits"] = None
                                 st.success("✓ Valid")
                         else:
                             st.session_state["api_key_valid"] = False
@@ -830,7 +832,11 @@ with st.sidebar:
                         st.session_state["api_key_valid"] = False
                         st.error(f"Error: {e}")
             elif st.session_state.get("api_key_valid"):
-                st.success("✓ Valid")
+                credits = st.session_state.get("api_credits")
+                if credits is not None:
+                    st.success(f"✓ ${credits:.2f} remaining")
+                else:
+                    st.success("✓ Valid")
 
         # Ollama (nested inside API settings)
         st.caption("---")
