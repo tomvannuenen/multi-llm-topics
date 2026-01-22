@@ -291,12 +291,13 @@ def get_models_by_category():
         ollama_models = fetch_ollama_models(ollama_url)
         all_models_info.update(ollama_models)
 
+    # If no providers enabled, return empty lists (not fallback defaults)
     if not all_models_info:
         return {
-            "all": DEFAULT_DISCOVERY_MODELS + DEFAULT_CONSOLIDATION_MODELS + DEFAULT_ASSIGNMENT_MODELS,
-            "discovery": DEFAULT_DISCOVERY_MODELS,
-            "consolidation": DEFAULT_CONSOLIDATION_MODELS,
-            "assignment": DEFAULT_ASSIGNMENT_MODELS,
+            "all": [],
+            "discovery": [],
+            "consolidation": [],
+            "assignment": [],
             "pricing": {},
         }
 
@@ -887,7 +888,8 @@ with st.sidebar:
     else:
         st.caption("Enable OpenRouter or Ollama to use models")
 
-    with st.expander("Settings", expanded=not api_ready):
+    # Always start expanded - Streamlit remembers user's open/close action
+    with st.expander("Settings", expanded=True):
         # --- OpenRouter (Cloud Models) ---
         st.caption("**☁️ Cloud Models (OpenRouter)**")
         api_key = st.text_input(
@@ -1333,59 +1335,85 @@ with tab1:
     models_dict = get_models_by_category()
     all_models = models_dict["all"]
 
-    # Model filtering
-    filter_col1, filter_col2 = st.columns(2)
-    with filter_col1:
-        model_filter = st.radio(
-            "Show models",
-            ["Recommended", "Free", "All"],
-            horizontal=True,
-            help="Recommended: curated list. Free: no cost. All: everything available."
-        )
-    with filter_col2:
-        provider_filter = st.multiselect(
-            "Providers",
-            ["Google", "Anthropic", "OpenAI", "Meta", "DeepSeek", "Mistral", "Local"],
-            default=[],
-            help="Filter by provider (leave empty for all)"
-        )
-
-    # Apply filters
-    if model_filter == "Recommended":
-        filtered_models = [m for m in RECOMMENDED_DISCOVERY if m in all_models]
-    elif model_filter == "Free":
-        filtered_models = sorted([m for m in all_models if ":free" in m or m.startswith("ollama/")])
+    # Check if any providers are enabled
+    if not all_models:
+        st.warning("**No models available.** Enable OpenRouter or Ollama in the sidebar Settings.")
+        selected_models = []
     else:
-        filtered_models = sorted(all_models) if all_models else DEFAULT_DISCOVERY_MODELS
+        # Model filtering
+        filter_col1, filter_col2 = st.columns(2)
+        with filter_col1:
+            model_filter = st.radio(
+                "Show models",
+                ["Recommended", "Free", "All"],
+                horizontal=True,
+                help="Recommended: curated list. Free: no cost. All: everything available."
+            )
+        with filter_col2:
+            # Only show providers that have models available
+            available_providers = []
+            if any(m.startswith("google/") for m in all_models):
+                available_providers.append("Google")
+            if any(m.startswith("anthropic/") for m in all_models):
+                available_providers.append("Anthropic")
+            if any(m.startswith("openai/") for m in all_models):
+                available_providers.append("OpenAI")
+            if any(m.startswith("meta-llama/") for m in all_models):
+                available_providers.append("Meta")
+            if any(m.startswith("deepseek/") for m in all_models):
+                available_providers.append("DeepSeek")
+            if any(m.startswith("mistral") for m in all_models):
+                available_providers.append("Mistral")
+            if any(m.startswith("ollama/") for m in all_models):
+                available_providers.append("Local")
 
-    # Apply provider filter
-    if provider_filter:
-        provider_map = {
-            "Google": "google/", "Anthropic": "anthropic/", "OpenAI": "openai/",
-            "Meta": "meta-llama/", "DeepSeek": "deepseek/", "Mistral": "mistral",
-            "Local": "ollama/"
-        }
-        filtered_models = [m for m in filtered_models
-                          if any(m.lower().startswith(provider_map.get(p, "").lower()) for p in provider_filter)]
+            provider_filter = st.multiselect(
+                "Providers",
+                available_providers,
+                default=[],
+                help="Filter by provider (leave empty for all)"
+            )
 
-    # Find defaults from filtered list (only when not filtering by provider)
-    if provider_filter:
-        discovery_defaults = []  # Let user choose when filtering by provider
-    else:
-        discovery_defaults = [m for m in RECOMMENDED_DISCOVERY if m in filtered_models][:3]
-        if not discovery_defaults and filtered_models:
-            discovery_defaults = filtered_models[:3]
+        # Apply filters
+        if model_filter == "Recommended":
+            # Include both recommended OpenRouter models AND all Ollama models
+            ollama_models = [m for m in all_models if m.startswith("ollama/")]
+            openrouter_recommended = [m for m in RECOMMENDED_DISCOVERY if m in all_models]
+            filtered_models = openrouter_recommended + ollama_models
+        elif model_filter == "Free":
+            filtered_models = sorted([m for m in all_models if ":free" in m or m.startswith("ollama/")])
+        else:
+            filtered_models = sorted(all_models)
 
-    col1, col2 = st.columns([2, 1])
+        # Apply provider filter
+        if provider_filter:
+            provider_map = {
+                "Google": "google/", "Anthropic": "anthropic/", "OpenAI": "openai/",
+                "Meta": "meta-llama/", "DeepSeek": "deepseek/", "Mistral": "mistral",
+                "Local": "ollama/"
+            }
+            filtered_models = [m for m in filtered_models
+                              if any(m.lower().startswith(provider_map.get(p, "").lower()) for p in provider_filter)]
 
-    with col1:
-        selected_models = st.multiselect(
-            f"Select Models ({len(filtered_models)} available)",
-            filtered_models,
-            default=discovery_defaults,
-            format_func=format_model_name,
-            help="Choose 2-5 models from different providers for diverse topic coverage."
-        )
+        # Find defaults from filtered list (only when not filtering by provider)
+        if provider_filter:
+            discovery_defaults = []  # Let user choose when filtering by provider
+        else:
+            # Try recommended first, then fall back to any available
+            discovery_defaults = [m for m in RECOMMENDED_DISCOVERY if m in filtered_models][:3]
+            if not discovery_defaults and filtered_models:
+                discovery_defaults = filtered_models[:3]
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            selected_models = st.multiselect(
+                f"Select Models ({len(filtered_models)} available)",
+                filtered_models,
+                default=discovery_defaults,
+                format_func=format_model_name,
+                help="Choose 2-5 models from different providers for diverse topic coverage."
+            )
 
         # Cap max samples at actual data size
         if "data" in st.session_state:
