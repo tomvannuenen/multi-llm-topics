@@ -277,8 +277,13 @@ def format_cost(cost: float) -> str:
 
 
 def get_models_by_category():
-    """Get models organized for different use cases, including Ollama if enabled."""
-    all_models_info = fetch_openrouter_models()
+    """Get models organized for different use cases, respecting enabled providers."""
+    all_models_info = {}
+
+    # Add OpenRouter models if enabled (or if key is valid and not explicitly disabled)
+    openrouter_enabled = st.session_state.get("api_key_valid") and st.session_state.get("openrouter_enabled", True)
+    if openrouter_enabled:
+        all_models_info = fetch_openrouter_models()
 
     # Add Ollama models if enabled
     if st.session_state.get("ollama_enabled"):
@@ -537,8 +542,13 @@ def process_single_post(client, model, post_text, topics, lock, errors, discover
 
 
 def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
-                  discovery_prompt, batch_size=50, early_stop_batches=3):
-    """Run topic discovery on texts with early stopping."""
+                  discovery_prompt, batch_size=50, early_stop_batches=3, stop_check=None):
+    """Run topic discovery on texts with early stopping.
+
+    Args:
+        stop_check: Optional callable that returns True if discovery should stop.
+                   This allows saving partial progress within a model's run.
+    """
     sample = texts[:n_samples] if len(texts) > n_samples else texts
     topics = {}
     errors = []
@@ -549,6 +559,7 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
     new_topics_total = 0
     batches_without_new = 0
     early_stopped = False
+    user_stopped = False
 
     # Use fewer parallel workers for free models to avoid rate limits
     is_free_model = ":free" in model.lower()
@@ -560,6 +571,12 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
 
     # Process in batches for early stopping
     for batch_start in range(0, total, batch_size):
+        # Check if user requested stop BEFORE starting a new batch
+        if stop_check and stop_check():
+            user_stopped = True
+            status_text.text(f"⏹️ Stopped by user — {len(topics)} topics saved from {completed} documents")
+            break
+
         batch_end = min(batch_start + batch_size, total)
         batch_texts = sample[batch_start:batch_end]
         new_in_batch = 0
@@ -593,11 +610,11 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
         else:
             batches_without_new = 0
 
-    if not early_stopped:
+    if not early_stopped and not user_stopped:
         status_text.text(f"✓ Complete: {len(topics)} topics from {completed} documents")
 
-    # Return errors for display
-    return topics, errors
+    # Return errors for display, plus flag indicating if user stopped
+    return topics, errors, user_stopped
 
 
 def run_consolidation(client, model, topics, progress_bar, status_text):
@@ -853,19 +870,28 @@ with st.sidebar:
     st.markdown("## Multi-LLM Topics")
     st.caption("by [Tom van Nuenen](https://tomvannuenen.github.io) · [GitHub](https://github.com/tomvannuenen)")
 
-    # --- STEP 1: API KEY ---
-    api_ready = st.session_state.get("api_key_valid") or st.session_state.get("ollama_enabled")
+    # --- STEP 1: MODEL PROVIDERS ---
+    openrouter_ready = st.session_state.get("api_key_valid") and st.session_state.get("openrouter_enabled", True)
+    ollama_ready = st.session_state.get("ollama_enabled", False)
+    api_ready = openrouter_ready or ollama_ready
     step1_status = "✓" if api_ready else "1"
-    st.subheader(f"{step1_status} API Key")
+    st.subheader(f"{step1_status} Model Providers")
 
     if api_ready:
-        st.success("Ready to use")
+        providers = []
+        if openrouter_ready:
+            providers.append("OpenRouter")
+        if ollama_ready:
+            providers.append("Ollama")
+        st.success(f"✓ {' + '.join(providers)}")
     else:
-        st.caption("Get a free key from [OpenRouter](https://openrouter.ai)")
+        st.caption("Enable OpenRouter or Ollama to use models")
 
     with st.expander("Settings", expanded=not api_ready):
+        # --- OpenRouter (Cloud Models) ---
+        st.caption("**☁️ Cloud Models (OpenRouter)**")
         api_key = st.text_input(
-            "OpenRouter API Key",
+            "API Key",
             type="password",
             value=st.session_state.get("api_key", os.environ.get("OPENROUTER_API_KEY", "")),
             help="Get your key at [openrouter.ai](https://openrouter.ai). Your key is not saved anywhere—it's only stored in memory for this session."
@@ -884,6 +910,9 @@ with st.sidebar:
                             st.session_state["api_key"] = api_key
                             st.session_state["api_key_validated"] = api_key
                             st.session_state["api_key_valid"] = True
+                            # Auto-enable OpenRouter when key is valid
+                            if "openrouter_enabled" not in st.session_state:
+                                st.session_state["openrouter_enabled"] = True
 
                             # Try to get actual credit balance
                             credits_response = requests.get(
@@ -897,26 +926,33 @@ with st.sidebar:
                                 total_usage = credits_data.get("total_usage", 0)
                                 remaining = total_credits - total_usage
                                 st.session_state["api_credits"] = remaining
-                                st.success(f"✓ ${remaining:.2f} remaining")
-                            else:
-                                st.session_state["api_credits"] = None
-                                st.success("✓ Valid")
                         else:
                             st.session_state["api_key_valid"] = False
                             st.error("Invalid API key")
                     except Exception as e:
                         st.session_state["api_key_valid"] = False
                         st.error(f"Error: {e}")
-            elif st.session_state.get("api_key_valid"):
-                credits = st.session_state.get("api_credits")
-                if credits is not None:
-                    st.success(f"✓ ${credits:.2f} remaining")
-                else:
-                    st.success("✓ Valid")
 
-        # Ollama (nested inside API settings)
+            # Show enable checkbox and credits only if key is valid
+            if st.session_state.get("api_key_valid"):
+                openrouter_enabled = st.checkbox(
+                    "Enable OpenRouter",
+                    value=st.session_state.get("openrouter_enabled", True),
+                    help="Uncheck to use only local Ollama models"
+                )
+                st.session_state["openrouter_enabled"] = openrouter_enabled
+                if openrouter_enabled:
+                    credits = st.session_state.get("api_credits")
+                    if credits is not None:
+                        st.success(f"✓ ${credits:.2f} remaining")
+                    else:
+                        st.success("✓ Ready")
+        else:
+            st.caption("Get a free key from [openrouter.ai](https://openrouter.ai)")
+
+        # --- Ollama (Local Models) ---
         st.caption("---")
-        st.caption("**Local Models (Ollama)**")
+        st.caption("**💻 Local Models (Ollama)**")
 
         # Quick check if Ollama is reachable
         ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
@@ -928,7 +964,7 @@ with st.sidebar:
             pass
 
         if not ollama_available:
-            st.caption("Run locally to use Ollama. [Instructions →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
+            st.caption("Not detected. [Setup guide →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
         else:
             ollama_enabled = st.checkbox(
                 "Enable Ollama",
@@ -1149,39 +1185,76 @@ st.divider()
 
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
 
-# Recommended models by task (paid models for reliability, free models available via filter)
-RECOMMENDED_DISCOVERY = [
-    "google/gemini-2.0-flash-001",
-    "anthropic/claude-haiku-4.5",
-    "openai/gpt-4.1-nano",
-    "mistralai/mistral-small-24b-instruct-2501",
-    "deepseek/deepseek-chat",
-]
 
-RECOMMENDED_CONSOLIDATION = [
-    "anthropic/claude-sonnet-4",
-    "openai/gpt-4.1",
-    "google/gemini-2.0-flash-001",
-    "deepseek/deepseek-chat",
-]
+# Load recommended models from config file (easy to update when models are deprecated)
+def load_recommended_models():
+    """Load recommended models from models_config.json, with fallback defaults."""
+    config_path = Path(__file__).parent / "models_config.json"
+    defaults = {
+        "discovery": [
+            "google/gemini-2.0-flash-001",
+            "anthropic/claude-haiku-4.5",
+            "openai/gpt-4.1-nano",
+            "mistralai/mistral-small-24b-instruct-2501",
+            "deepseek/deepseek-chat",
+        ],
+        "consolidation": [
+            "anthropic/claude-sonnet-4",
+            "openai/gpt-4.1",
+            "google/gemini-2.0-flash-001",
+            "deepseek/deepseek-chat",
+        ],
+        "assignment": [
+            "google/gemini-2.0-flash-001",
+            "anthropic/claude-haiku-4.5",
+            "openai/gpt-4.1-nano",
+            "deepseek/deepseek-chat",
+        ],
+    }
+    try:
+        if config_path.exists():
+            with open(config_path) as f:
+                config = json.load(f)
+            return {
+                "discovery": config.get("discovery", defaults["discovery"]),
+                "consolidation": config.get("consolidation", defaults["consolidation"]),
+                "assignment": config.get("assignment", defaults["assignment"]),
+            }
+    except Exception:
+        pass
+    return defaults
 
-RECOMMENDED_ASSIGNMENT = [
-    "google/gemini-2.0-flash-001",
-    "anthropic/claude-haiku-4.5",
-    "openai/gpt-4.1-nano",
-    "deepseek/deepseek-chat",
-]
+
+_RECOMMENDED_MODELS = load_recommended_models()
+RECOMMENDED_DISCOVERY = _RECOMMENDED_MODELS["discovery"]
+RECOMMENDED_CONSOLIDATION = _RECOMMENDED_MODELS["consolidation"]
+RECOMMENDED_ASSIGNMENT = _RECOMMENDED_MODELS["assignment"]
 
 
-def format_model_name(model_id: str) -> str:
-    """Format model ID for display - shorter, more readable."""
+def format_model_name(model_id: str, show_provider: bool = None) -> str:
+    """Format model ID for display - shorter, more readable.
+
+    Args:
+        model_id: The full model ID (e.g., "ollama/llama3.2" or "openai/gpt-4")
+        show_provider: If True, show [local] or [cloud] suffix. If None, auto-detect
+                      based on whether both Ollama and OpenRouter are enabled.
+    """
+    # Auto-detect whether to show provider labels
+    if show_provider is None:
+        both_enabled = (
+            st.session_state.get("ollama_enabled", False) and
+            st.session_state.get("api_key_valid") and
+            st.session_state.get("openrouter_enabled", True)
+        )
+        show_provider = both_enabled
+
     if model_id.startswith("ollama/"):
-        # Show Ollama models with [local] indicator
         name = model_id[7:]  # Remove "ollama/" prefix
-        return f"{name} [local]"
-    # Remove provider prefix for display, keep :free suffix visible
-    name = model_id.split("/")[-1] if "/" in model_id else model_id
-    return name
+        return f"{name} [local]" if show_provider else name
+    else:
+        # OpenRouter model - remove provider prefix for display
+        name = model_id.split("/")[-1] if "/" in model_id else model_id
+        return f"{name} [cloud]" if show_provider else name
 
 
 # Tab 1: Discovery
@@ -1442,19 +1515,30 @@ with tab1:
                 st.stop()
 
             st.session_state["discovery_running"] = True
+            st.session_state["discovery_stop_requested"] = False
 
-            # Stop button
+            # Stop button - sets flag that run_discovery checks between batches
             stop_placeholder = st.empty()
-            if stop_placeholder.button("⏹️ Stop Discovery", type="secondary", use_container_width=True):
-                st.session_state["discovery_running"] = False
-                st.warning("Discovery stopped by user")
-                st.rerun()
+            if stop_placeholder.button("⏹️ Stop Discovery (saves progress)", type="secondary", use_container_width=True):
+                st.session_state["discovery_stop_requested"] = True
+                st.info("Stopping after current batch... progress will be saved.")
+
+            # Stop check function passed to run_discovery
+            def check_stop():
+                return st.session_state.get("discovery_stop_requested", False)
 
             # Load any existing progress
             all_topics = st.session_state.get("discovered_topics_partial", {})
             completed_models = st.session_state.get("discovery_completed_models", [])
+            user_stopped = False
 
             for model in selected_models:
+                # Check if user stopped before starting a new model
+                if st.session_state.get("discovery_stop_requested"):
+                    st.warning(f"Stopped before {format_model_name(model)} — progress saved")
+                    user_stopped = True
+                    break
+
                 # Skip already completed models (for resume)
                 if model in completed_models:
                     st.success(f"✓ {format_model_name(model)} already complete")
@@ -1467,8 +1551,11 @@ with tab1:
                 try:
                     # Get client for this specific model (routes to Ollama or OpenRouter)
                     client = get_client(model)
-                    topics, errors = run_discovery(client, model, texts, n_samples, progress, status,
-                                                   st.session_state["discovery_prompt"])
+                    topics, errors, model_stopped = run_discovery(
+                        client, model, texts, n_samples, progress, status,
+                        st.session_state["discovery_prompt"],
+                        stop_check=check_stop
+                    )
 
                     # Show errors if any
                     if errors:
@@ -1478,19 +1565,26 @@ with tab1:
                             if len(errors) > 10:
                                 st.caption(f"... and {len(errors) - 10} more")
 
-                    # Merge topics
+                    # Merge topics (even partial ones from stopped model)
                     for t, data in topics.items():
                         if t not in all_topics:
                             all_topics[t] = {"models": [], "count": 0, "description": data.get("description", "")}
                         all_topics[t]["models"].append(model.split("/")[-1])
                         all_topics[t]["count"] += data.get("count", 1)
 
-                    st.success(f"Found {len(topics)} topics")
-
-                    # Save progress after each model completes
-                    completed_models.append(model)
-                    st.session_state["discovered_topics_partial"] = all_topics
-                    st.session_state["discovery_completed_models"] = completed_models
+                    if model_stopped:
+                        st.warning(f"Stopped during {format_model_name(model)} — {len(topics)} topics saved")
+                        user_stopped = True
+                        # Save partial progress from this model
+                        st.session_state["discovered_topics_partial"] = all_topics
+                        st.session_state["discovery_completed_models"] = completed_models
+                        break
+                    else:
+                        st.success(f"Found {len(topics)} topics")
+                        # Save progress after each model completes
+                        completed_models.append(model)
+                        st.session_state["discovered_topics_partial"] = all_topics
+                        st.session_state["discovery_completed_models"] = completed_models
 
                 except Exception as e:
                     st.error(f"Error with {format_model_name(model)}: {str(e)[:200]}")
@@ -1501,6 +1595,13 @@ with tab1:
 
             stop_placeholder.empty()  # Remove stop button
             st.session_state["discovery_running"] = False
+            st.session_state["discovery_stop_requested"] = False
+
+            # If user stopped, keep partial state for resume
+            if user_stopped:
+                st.info(f"**{len(all_topics)} topics saved.** Click 'Use Partial Results' or 'Resume Discovery' above.")
+                st.rerun()
+
             st.session_state["discovered_topics"] = all_topics
             # Clean up partial state
             if "discovered_topics_partial" in st.session_state:

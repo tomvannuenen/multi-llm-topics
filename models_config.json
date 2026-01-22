@@ -1,0 +1,27 @@
+{
+  "_comment": "Recommended models for each pipeline stage. Update these when models are deprecated on OpenRouter.",
+  "_updated": "2025-01-22",
+  "_check_availability": "https://openrouter.ai/models",
+
+  "discovery": [
+    "google/gemini-2.0-flash-001",
+    "anthropic/claude-haiku-4.5",
+    "openai/gpt-4.1-nano",
+    "mistralai/mistral-small-24b-instruct-2501",
+    "deepseek/deepseek-chat"
+  ],
+
+  "consolidation": [
+    "anthropic/claude-sonnet-4",
+    "openai/gpt-4.1",
+    "google/gemini-2.0-flash-001",
+    "deepseek/deepseek-chat"
+  ],
+
+  "assignment": [
+    "google/gemini-2.0-flash-001",
+    "anthropic/claude-haiku-4.5",
+    "openai/gpt-4.1-nano",
+    "deepseek/deepseek-chat"
+  ]
+}
