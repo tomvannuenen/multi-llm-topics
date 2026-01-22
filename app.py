@@ -1020,20 +1020,55 @@ with tab1:
     models_dict = get_models_by_category()
     all_models = models_dict["all"]
 
-    # Find recommended models that exist in the available list
-    discovery_defaults = [m for m in RECOMMENDED_DISCOVERY if m in all_models][:3]
-    if not discovery_defaults:
-        discovery_defaults = DEFAULT_DISCOVERY_MODELS[:3]
+    # Model filtering
+    filter_col1, filter_col2 = st.columns(2)
+    with filter_col1:
+        model_filter = st.radio(
+            "Show models",
+            ["Recommended", "Free", "All"],
+            horizontal=True,
+            help="Recommended: curated list. Free: no cost. All: everything available."
+        )
+    with filter_col2:
+        provider_filter = st.multiselect(
+            "Providers",
+            ["Google", "Anthropic", "OpenAI", "Meta", "DeepSeek", "Mistral", "Local"],
+            default=[],
+            help="Filter by provider (leave empty for all)"
+        )
+
+    # Apply filters
+    if model_filter == "Recommended":
+        filtered_models = [m for m in RECOMMENDED_DISCOVERY if m in all_models]
+    elif model_filter == "Free":
+        filtered_models = [m for m in all_models if ":free" in m or m.startswith("ollama/")]
+    else:
+        filtered_models = all_models if all_models else DEFAULT_DISCOVERY_MODELS
+
+    # Apply provider filter
+    if provider_filter:
+        provider_map = {
+            "Google": "google/", "Anthropic": "anthropic/", "OpenAI": "openai/",
+            "Meta": "meta-llama/", "DeepSeek": "deepseek/", "Mistral": "mistral",
+            "Local": "ollama/"
+        }
+        filtered_models = [m for m in filtered_models
+                          if any(m.lower().startswith(provider_map.get(p, "").lower()) for p in provider_filter)]
+
+    # Find defaults from filtered list
+    discovery_defaults = [m for m in RECOMMENDED_DISCOVERY if m in filtered_models][:3]
+    if not discovery_defaults and filtered_models:
+        discovery_defaults = filtered_models[:3]
 
     col1, col2 = st.columns([2, 1])
 
     with col1:
         selected_models = st.multiselect(
-            "Select Models",
-            all_models if all_models else DEFAULT_DISCOVERY_MODELS,
+            f"Select Models ({len(filtered_models)} available)",
+            filtered_models,
             default=discovery_defaults,
             format_func=format_model_name,
-            help="Choose 2-5 models from different providers for diverse topic coverage. Fast/cheap models work well."
+            help="Choose 2-5 models from different providers for diverse topic coverage."
         )
 
         # Cap max samples at actual data size
