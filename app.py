@@ -105,25 +105,24 @@ if not st.session_state["welcome_dismissed"]:
 
 
 # Default recommended models (used if API fetch fails)
-# Free models have :free suffix - great for testing!
-# Note: Llama free models are often rate-limited, so we prefer Mistral/Google/DeepSeek
+# Paid models recommended for reliability; free models available via "Free" filter
 DEFAULT_DISCOVERY_MODELS = [
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "deepseek/deepseek-chat-v3-0324:free",
+    "google/gemini-2.0-flash-001",
     "anthropic/claude-haiku-4.5",
+    "openai/gpt-4.1-nano",
+    "deepseek/deepseek-chat",
 ]
 
 DEFAULT_CONSOLIDATION_MODELS = [
-    "google/gemini-2.5-pro-exp-03-25:free",
-    "deepseek/deepseek-chat-v3-0324:free",
     "anthropic/claude-sonnet-4",
+    "openai/gpt-4.1",
+    "google/gemini-2.0-flash-001",
 ]
 
 DEFAULT_ASSIGNMENT_MODELS = [
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "deepseek/deepseek-chat-v3-0324:free",
+    "google/gemini-2.0-flash-001",
+    "anthropic/claude-haiku-4.5",
+    "openai/gpt-4.1-nano",
 ]
 
 
@@ -1049,27 +1048,27 @@ st.divider()
 
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
 
-# Recommended models by task (free models first for easy testing)
-# Note: Llama free models are often rate-limited, so we use Mistral/Google/DeepSeek instead
+# Recommended models by task (paid models for reliability, free models available via filter)
 RECOMMENDED_DISCOVERY = [
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "deepseek/deepseek-chat-v3-0324:free",
+    "google/gemini-2.0-flash-001",
     "anthropic/claude-haiku-4.5",
     "openai/gpt-4.1-nano",
+    "mistralai/mistral-small-24b-instruct-2501",
+    "deepseek/deepseek-chat",
 ]
 
 RECOMMENDED_CONSOLIDATION = [
-    "google/gemini-2.5-pro-exp-03-25:free",
-    "deepseek/deepseek-chat-v3-0324:free",
     "anthropic/claude-sonnet-4",
     "openai/gpt-4.1",
+    "google/gemini-2.0-flash-001",
+    "deepseek/deepseek-chat",
 ]
 
 RECOMMENDED_ASSIGNMENT = [
-    "google/gemini-2.0-flash-exp:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "deepseek/deepseek-chat-v3-0324:free",
+    "google/gemini-2.0-flash-001",
+    "anthropic/claude-haiku-4.5",
+    "openai/gpt-4.1-nano",
+    "deepseek/deepseek-chat",
 ]
 
 
