@@ -52,7 +52,6 @@ DEFAULT_DISCOVERY_MODELS = [
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "deepseek/deepseek-chat-v3-0324:free",
-    "google/gemini-2.0-flash-001",
     "anthropic/claude-haiku-4.5",
 ]
 
@@ -67,6 +66,36 @@ DEFAULT_ASSIGNMENT_MODELS = [
     "meta-llama/llama-3.3-70b-instruct:free",
     "google/gemini-2.0-flash-001",
 ]
+
+
+def fetch_ollama_models(ollama_url: str = "http://localhost:11434") -> dict:
+    """Fetch available models from local Ollama instance."""
+    try:
+        response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            model_info = {}
+            for m in models:
+                name = m.get("name", "")
+                if name:
+                    # Prefix with ollama/ to distinguish from OpenRouter models
+                    model_id = f"ollama/{name}"
+                    model_info[model_id] = {
+                        "prompt_cost": 0,
+                        "completion_cost": 0,
+                        "context_length": 0,  # Ollama doesn't report this in /api/tags
+                        "is_free": True,  # Local models are always free
+                        "is_ollama": True,
+                    }
+            return model_info
+    except requests.exceptions.ConnectionError:
+        # Ollama not running - this is expected if user doesn't have it
+        pass
+    except Exception as e:
+        # Only warn if Ollama is enabled
+        if st.session_state.get("ollama_enabled"):
+            st.warning(f"Could not connect to Ollama: {e}")
+    return {}
 
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
@@ -99,6 +128,7 @@ def fetch_openrouter_models():
                         "completion_cost": completion_cost,
                         "context_length": m.get("context_length", 0),
                         "is_free": ":free" in model_id,
+                        "is_ollama": False,
                     }
             return model_info
     except Exception as e:
@@ -107,20 +137,24 @@ def fetch_openrouter_models():
 
 
 def sort_models_for_task(models: dict, task: str = "discovery") -> list:
-    """Sort models: free first, then by price (cheap first for fast tasks, expensive first for reasoning)."""
+    """Sort models: local/free first, then by price (cheap first for fast tasks, expensive first for reasoning)."""
     model_list = list(models.keys())
 
     def sort_key(model_id):
         info = models.get(model_id, {})
-        is_free = info.get("is_free", ":free" in model_id)
+        is_ollama = model_id.startswith("ollama/") or info.get("is_ollama", False)
+        is_free = is_ollama or info.get("is_free", ":free" in model_id)
         total_cost = info.get("prompt_cost", 0) + info.get("completion_cost", 0)
 
         if task == "consolidation":
-            # For consolidation, prefer stronger (more expensive) models, but free first
-            return (0 if is_free else 1, -total_cost)
+            # For consolidation, prefer stronger (more expensive) models, but local/free first
+            # Put Ollama at very top (sort key -1), then free cloud (0), then paid (1)
+            priority = -1 if is_ollama else (0 if is_free else 1)
+            return (priority, -total_cost)
         else:
-            # For discovery/assignment, prefer cheaper models, free first
-            return (0 if is_free else 1, total_cost)
+            # For discovery/assignment, prefer cheaper models, local/free first
+            priority = -1 if is_ollama else (0 if is_free else 1)
+            return (priority, total_cost)
 
     return sorted(model_list, key=sort_key)
 
@@ -185,8 +219,14 @@ def format_cost(cost: float) -> str:
 
 
 def get_models_by_category():
-    """Get models organized for different use cases."""
+    """Get models organized for different use cases, including Ollama if enabled."""
     all_models_info = fetch_openrouter_models()
+
+    # Add Ollama models if enabled
+    if st.session_state.get("ollama_enabled"):
+        ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
+        ollama_models = fetch_ollama_models(ollama_url)
+        all_models_info.update(ollama_models)
 
     if not all_models_info:
         return {
@@ -197,18 +237,18 @@ def get_models_by_category():
             "pricing": {},
         }
 
-    # Sort models: free first, then by price
+    # Sort models: free/local first, then by price
     all_models_sorted = sort_models_for_task(all_models_info, "discovery")
 
-    # Categorize models
-    fast_models = [m for m in all_models_sorted if any(x in m.lower() for x in ["flash", "haiku", "mini", "nano", "lite", "8b", "7b", ":free"])]
-    strong_models = [m for m in all_models_sorted if any(x in m.lower() for x in ["sonnet", "opus", "gpt-4", "claude-3", "gemini-pro", "gemini-2", ":free"])]
+    # Categorize models (include ollama models in fast category)
+    fast_models = [m for m in all_models_sorted if any(x in m.lower() for x in ["flash", "haiku", "mini", "nano", "lite", "8b", "7b", ":free", "ollama/"])]
+    strong_models = [m for m in all_models_sorted if any(x in m.lower() for x in ["sonnet", "opus", "gpt-4", "claude-3", "gemini-pro", "gemini-2", ":free", "ollama/"])]
 
     return {
         "all": all_models_sorted,
         "discovery": fast_models if fast_models else all_models_sorted[:20],
-        "consolidation": strong_models if strong_models else all_models[:10],
-        "assignment": fast_models if fast_models else all_models[:20],
+        "consolidation": strong_models if strong_models else all_models_sorted[:10],
+        "assignment": fast_models if fast_models else all_models_sorted[:20],
         "pricing": all_models_info,
     }
 
@@ -279,12 +319,30 @@ if "assignment_prompt" not in st.session_state:
     st.session_state["assignment_prompt"] = DEFAULT_ASSIGNMENT_PROMPT
 
 
-def get_client():
-    """Get OpenAI client configured for OpenRouter."""
-    api_key = st.session_state.get("api_key") or os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        return None
-    return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+def get_client(model: str = None):
+    """Get OpenAI client configured for the appropriate backend.
+
+    Args:
+        model: Model ID. If starts with 'ollama/', routes to local Ollama.
+               Otherwise routes to OpenRouter.
+    """
+    if model and model.startswith("ollama/"):
+        # Route to Ollama
+        ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
+        return OpenAI(base_url=f"{ollama_url}/v1", api_key="ollama")  # Ollama doesn't need real key
+    else:
+        # Route to OpenRouter
+        api_key = st.session_state.get("api_key") or os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            return None
+        return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+
+
+def get_model_for_api(model: str) -> str:
+    """Strip ollama/ prefix for API calls."""
+    if model.startswith("ollama/"):
+        return model[7:]  # Remove "ollama/" prefix
+    return model
 
 
 def process_single_post(client, model, post_text, topics, lock, errors, discovery_prompt):
@@ -302,10 +360,13 @@ def process_single_post(client, model, post_text, topics, lock, errors, discover
 
         prompt = discovery_prompt.format(topics=topics_formatted, post=post_text[:6000])
 
+        # Get the actual model name for API (strip ollama/ prefix)
+        api_model = get_model_for_api(model)
+
         # Try with JSON mode first, fall back to regular mode
         try:
             response = client.chat.completions.create(
-                model=model,
+                model=api_model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200,
                 temperature=0.0,
@@ -315,7 +376,7 @@ def process_single_post(client, model, post_text, topics, lock, errors, discover
             # Some models don't support JSON mode, try without it
             if "json" in str(e).lower() or "response_format" in str(e).lower():
                 response = client.chat.completions.create(
-                    model=model,
+                    model=api_model,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=200,
                     temperature=0.0,
@@ -431,11 +492,14 @@ def run_consolidation(client, model, topics, progress_bar, status_text):
     topics_formatted = "\n".join(f"- {t}" for t in sorted(topics))
     prompt = st.session_state["consolidation_prompt"].format(n_topics=len(topics), topics=topics_formatted)
 
-    status_text.text(f"Sending {len(topics)} topics to {model}...")
+    # Get the actual model name for API (strip ollama/ prefix)
+    api_model = get_model_for_api(model)
+
+    status_text.text(f"Sending {len(topics)} topics to {format_model_name(model)}...")
     progress_bar.progress(0.3)
 
     response = client.chat.completions.create(
-        model=model,
+        model=api_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=16000,
         temperature=0.0,
@@ -467,6 +531,9 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
     valid_labels = {t['topic'] for t in taxonomy}
     n_topics = len(taxonomy)
 
+    # Get the actual model name for API (strip ollama/ prefix)
+    api_model = get_model_for_api(model)
+
     results = []
     total = len(texts)
 
@@ -481,7 +548,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
             # Try with JSON mode first, fall back if not supported
             try:
                 response = client.chat.completions.create(
-                    model=model,
+                    model=api_model,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=500,
                     temperature=0.0,
@@ -490,7 +557,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
             except Exception as e:
                 if "json" in str(e).lower() or "response_format" in str(e).lower():
                     response = client.chat.completions.create(
-                        model=model,
+                        model=api_model,
                         messages=[{"role": "user", "content": prompt}],
                         max_tokens=500,
                         temperature=0.0,
@@ -605,6 +672,38 @@ with st.sidebar:
 
     st.divider()
 
+    # Ollama (local models) configuration
+    with st.expander("🖥️ Local Models (Ollama)", expanded=False):
+        st.caption("Run models locally for free using [Ollama](https://ollama.com)")
+
+        ollama_enabled = st.checkbox(
+            "Enable Ollama",
+            value=st.session_state.get("ollama_enabled", False),
+            help="Connect to a local Ollama instance for free local models"
+        )
+        st.session_state["ollama_enabled"] = ollama_enabled
+
+        if ollama_enabled:
+            ollama_url = st.text_input(
+                "Ollama URL",
+                value=st.session_state.get("ollama_url", "http://localhost:11434"),
+                help="URL of your Ollama instance"
+            )
+            st.session_state["ollama_url"] = ollama_url
+
+            # Test connection and show available models
+            ollama_models = fetch_ollama_models(ollama_url)
+            if ollama_models:
+                st.success(f"✓ Connected — {len(ollama_models)} models available")
+                model_names = [m.replace("ollama/", "") for m in ollama_models.keys()]
+                st.caption(f"Models: {', '.join(model_names[:5])}{'...' if len(model_names) > 5 else ''}")
+            else:
+                st.warning("Could not connect to Ollama. Make sure it's running.")
+                st.caption("Install: `curl -fsSL https://ollama.com/install.sh | sh`")
+                st.caption("Then run: `ollama pull llama3.2` to download a model")
+
+    st.divider()
+
     # Sample data option
     if "data" not in st.session_state:
         if st.button("📋 Load Sample Data", help="Load 100 sample posts to try out the app"):
@@ -714,7 +813,7 @@ if "data" not in st.session_state:
         st.markdown("#### ▶️ Step 3")
         st.caption("Run Discovery → Consolidation → Assignment, then download results")
 
-    st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. We pre-select free models by default.")
+    st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. Or enable [Ollama](https://ollama.com) in the sidebar to run models locally for free.")
 
     with st.expander("📖 How does this work?", expanded=False):
         st.markdown("""
@@ -758,7 +857,6 @@ RECOMMENDED_DISCOVERY = [
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "deepseek/deepseek-chat-v3-0324:free",
-    "google/gemini-2.0-flash-001",
     "anthropic/claude-haiku-4.5",
     "openai/gpt-4.1-nano",
 ]
@@ -773,9 +871,19 @@ RECOMMENDED_CONSOLIDATION = [
 RECOMMENDED_ASSIGNMENT = [
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemini-2.5-flash-lite-preview-06-17",
-    "google/gemini-2.0-flash-001",
+    "deepseek/deepseek-chat-v3-0324:free",
 ]
+
+
+def format_model_name(model_id: str) -> str:
+    """Format model ID for display - shorter, more readable."""
+    if model_id.startswith("ollama/"):
+        # Show Ollama models with [local] indicator
+        name = model_id[7:]  # Remove "ollama/" prefix
+        return f"{name} [local]"
+    # Remove provider prefix for display, keep :free suffix visible
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+    return name
 
 # Tab 1: Discovery
 with tab1:
@@ -851,6 +959,7 @@ with tab1:
             "Select Models",
             all_models if all_models else DEFAULT_DISCOVERY_MODELS,
             default=discovery_defaults,
+            format_func=format_model_name,
             help="Choose 2-5 models from different providers for diverse topic coverage. Fast/cheap models work well."
         )
 
@@ -895,9 +1004,10 @@ with tab1:
         st.metric("Est. Cost", format_cost(total_cost))
 
     if st.button("🚀 Start Discovery", type="primary", use_container_width=True):
-        client = get_client()
-        if not client:
-            st.error("Please set your OpenRouter API key")
+        # Check if any OpenRouter models are selected (need API key)
+        openrouter_models = [m for m in selected_models if not m.startswith("ollama/")]
+        if openrouter_models and not get_client():
+            st.error("Please set your OpenRouter API key for cloud models")
         elif "data" not in st.session_state:
             st.error("Please upload data first")
         elif not selected_models:
@@ -910,10 +1020,12 @@ with tab1:
             all_topics = {}
 
             for model in selected_models:
-                st.subheader(f"Running: {model.split('/')[-1]}")
+                st.subheader(f"Running: {format_model_name(model)}")
                 progress = st.progress(0)
                 status = st.empty()
 
+                # Get client for this specific model (routes to Ollama or OpenRouter)
+                client = get_client(model)
                 topics, errors = run_discovery(client, model, texts, n_samples, progress, status,
                                                st.session_state["discovery_prompt"])
 
@@ -1030,6 +1142,7 @@ with tab2:
                 "Consolidation Model",
                 consolidation_models,
                 index=default_idx,
+                format_func=format_model_name,
                 help="Use a strong reasoning model. Larger models work better for semantic merging."
             )
         with col2:
@@ -1038,9 +1151,9 @@ with tab2:
             st.metric("Est. Cost", format_cost(cost))
 
         if st.button("🔄 Consolidate Topics", type="primary", use_container_width=True):
-            client = get_client()
+            client = get_client(model)
             if not client:
-                st.error("Please set your OpenRouter API key")
+                st.error("Please set your OpenRouter API key for cloud models")
             else:
                 progress = st.progress(0)
                 status = st.empty()
@@ -1131,6 +1244,7 @@ with tab3:
                 "Assignment Model",
                 assignment_models,
                 index=default_idx,
+                format_func=format_model_name,
                 help="Fast, cheap models work well. This is the most API-intensive step."
             )
         with col2:
@@ -1149,9 +1263,9 @@ with tab3:
             st.metric("Est. Cost", format_cost(cost))
 
         if st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
-            client = get_client()
+            client = get_client(model)
             if not client:
-                st.error("Please set your OpenRouter API key")
+                st.error("Please set your OpenRouter API key for cloud models")
             elif "data" not in st.session_state:
                 st.error("Please upload data first")
             else:

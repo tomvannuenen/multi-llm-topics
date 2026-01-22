@@ -8,14 +8,20 @@ A topic modeling approach that uses multiple LLMs to discover, consolidate, and 
 
 ## Requirements
 
-**OpenRouter API key (required).** This tool uses [OpenRouter](https://openrouter.ai) as a unified gateway to access models from OpenAI, Anthropic, Google, Mistral, DeepSeek, and others through a single API. This is essential for the multi-model approach—instead of managing separate API keys for each provider, you use one account.
+**Option A: OpenRouter API key (cloud models).** This tool uses [OpenRouter](https://openrouter.ai) as a unified gateway to access models from OpenAI, Anthropic, Google, Mistral, DeepSeek, and others through a single API.
 
 - Sign up at [openrouter.ai](https://openrouter.ai) (free, takes 1 minute)
 - New accounts receive free credits to get started
 - You pay per API call; costs vary by model (see [Cost Estimates](#cost-estimates-via-openrouter) below)
-- Typical analysis of a few hundred documents: **$0.50–$2.00**
+- Models with `:free` suffix cost nothing
+- Typical analysis of a few hundred documents: **$0.50–$2.00** (or free with `:free` models)
 
-There is currently no way to use this tool without an OpenRouter API key.
+**Option B: Ollama (local models).** Run models locally for free using [Ollama](https://ollama.com). No API key needed.
+
+- Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+- Pull a model: `ollama pull llama3.2` (or `mistral`, `gemma2`, etc.)
+- Enable Ollama in the app sidebar under "Local Models"
+- Cost: **$0** (runs on your hardware)
 
 ---
 
@@ -34,14 +40,16 @@ A browser window will open with the app.
 
 **Step 2: Use the App**
 
-1. Paste your OpenRouter API key in the sidebar
+1. Choose your models:
+   - **Cloud models**: Paste your OpenRouter API key in the sidebar
+   - **Local models**: Enable Ollama in the sidebar (must have Ollama running)
 2. Upload your CSV file (must have a text column)
 3. Go through the tabs: **Discovery** → **Consolidation** → **Assignment** → **Results**
 4. Download your results as CSV
 
 **Try it out:** A `sample_data.csv` file is included to test with.
 
-**Typical cost:** $0.50–$2.00 for a few hundred documents using cheap models.
+**Cost:** $0.50–$2.00 for a few hundred documents using cheap cloud models, or **free** with Ollama or `:free` models.
 
 ---
 
