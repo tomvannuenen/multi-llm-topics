@@ -1041,9 +1041,9 @@ with tab1:
     if model_filter == "Recommended":
         filtered_models = [m for m in RECOMMENDED_DISCOVERY if m in all_models]
     elif model_filter == "Free":
-        filtered_models = [m for m in all_models if ":free" in m or m.startswith("ollama/")]
+        filtered_models = sorted([m for m in all_models if ":free" in m or m.startswith("ollama/")])
     else:
-        filtered_models = all_models if all_models else DEFAULT_DISCOVERY_MODELS
+        filtered_models = sorted(all_models) if all_models else DEFAULT_DISCOVERY_MODELS
 
     # Apply provider filter
     if provider_filter:
