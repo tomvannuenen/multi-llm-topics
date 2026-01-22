@@ -589,12 +589,15 @@ def process_single_post(client, model, post_text, topics, lock, errors, discover
 
 
 def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
-                  discovery_prompt, batch_size=50, early_stop_batches=3, stop_check=None):
+                  discovery_prompt, batch_size=50, early_stop_batches=3, stop_check=None,
+                  save_progress=None):
     """Run topic discovery on texts with early stopping.
 
     Args:
         stop_check: Optional callable that returns True if discovery should stop.
                    This allows saving partial progress within a model's run.
+        save_progress: Optional callable(topics_dict) called after each batch to persist progress.
+                      This ensures progress is saved even if the script restarts.
     """
     sample = texts[:n_samples] if len(texts) > n_samples else texts
     topics = {}
@@ -656,6 +659,10 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
         # Small delay between batches for free models
         if batch_delay > 0 and batch_end < total:
             time.sleep(batch_delay)
+
+        # Save progress after each batch (ensures progress survives script restarts)
+        if save_progress and topics:
+            save_progress(topics)
 
         # Check early stopping
         if new_in_batch == 0:
@@ -1368,7 +1375,7 @@ with st.sidebar:
             confirm_clear = st.checkbox("I want to clear all data and results", key="confirm_clear_data")
             if st.button("Clear data", type="secondary", use_container_width=True, disabled=not confirm_clear):
                 for key in ["data", "discovered_topics", "discovered_topics_partial", "discovery_completed_models",
-                            "approved_topics", "topic_selection",
+                            "discovery_in_progress_model", "approved_topics", "topic_selection",
                             "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
                             "assignments", "assignments_partial", "results_df", "spot_check_sample", "spot_check_ratings",
                             "text_column", "id_column", "confirm_clear_data"]:
@@ -1775,7 +1782,7 @@ with tab1:
             if st.button("🔄 Re-run Discovery", use_container_width=True):
                 # Clear discovery and all downstream
                 for key in ["discovered_topics", "discovered_topics_partial", "discovery_completed_models",
-                           "approved_topics", "topic_selection",
+                           "discovery_in_progress_model", "approved_topics", "topic_selection",
                            "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
                            "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
                     if key in st.session_state:
@@ -1785,7 +1792,7 @@ with tab1:
             if st.button("🗑️ Clear Results", use_container_width=True, type="secondary"):
                 # Clear discovery and all downstream
                 for key in ["discovered_topics", "discovered_topics_partial", "discovery_completed_models",
-                           "approved_topics", "topic_selection",
+                           "discovery_in_progress_model", "approved_topics", "topic_selection",
                            "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
                            "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
                     if key in st.session_state:
@@ -1795,15 +1802,22 @@ with tab1:
     elif "discovered_topics_partial" in st.session_state and st.session_state["discovered_topics_partial"]:
         partial_topics = st.session_state["discovered_topics_partial"]
         completed = st.session_state.get("discovery_completed_models", [])
-        st.warning(f"⚠️ **Partial results:** {len(partial_topics)} topics from {len(completed)} model(s)")
+        in_progress = st.session_state.get("discovery_in_progress_model")
+
+        if in_progress:
+            st.warning(f"⚠️ **Partial results saved:** {len(partial_topics)} topics "
+                      f"({len(completed)} model(s) complete, interrupted during {format_model_name(in_progress)})")
+        else:
+            st.warning(f"⚠️ **Partial results:** {len(partial_topics)} topics from {len(completed)} model(s)")
 
         col_use, col_resume, col_clear = st.columns(3)
         with col_use:
             if st.button("✅ Use Partial Results", use_container_width=True, type="primary"):
                 st.session_state["discovered_topics"] = partial_topics
                 del st.session_state["discovered_topics_partial"]
-                if "discovery_completed_models" in st.session_state:
-                    del st.session_state["discovery_completed_models"]
+                for key in ["discovery_completed_models", "discovery_in_progress_model"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
         with col_resume:
             if st.button("▶️ Resume Discovery", use_container_width=True):
@@ -1812,8 +1826,9 @@ with tab1:
         with col_clear:
             if st.button("🗑️ Discard", use_container_width=True, type="secondary"):
                 del st.session_state["discovered_topics_partial"]
-                if "discovery_completed_models" in st.session_state:
-                    del st.session_state["discovery_completed_models"]
+                for key in ["discovery_completed_models", "discovery_in_progress_model"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
 
         # Show what we have
@@ -1880,13 +1895,30 @@ with tab1:
                 progress = st.progress(0)
                 status = st.empty()
 
+                # Create save callback that persists progress after each batch
+                def make_save_callback(current_model, all_topics_ref):
+                    def save_progress(model_topics):
+                        # Merge current model's topics into all_topics
+                        for t, data in model_topics.items():
+                            if t not in all_topics_ref:
+                                all_topics_ref[t] = {"models": [], "count": 0, "description": data.get("description", "")}
+                            model_name = current_model.split("/")[-1]
+                            if model_name not in all_topics_ref[t]["models"]:
+                                all_topics_ref[t]["models"].append(model_name)
+                            all_topics_ref[t]["count"] = max(all_topics_ref[t]["count"], data.get("count", 1))
+                        # Persist to session state (survives script restarts)
+                        st.session_state["discovered_topics_partial"] = all_topics_ref
+                        st.session_state["discovery_in_progress_model"] = current_model
+                    return save_progress
+
                 try:
                     # Get client for this specific model (routes to Ollama or OpenRouter)
                     client = get_client(model)
                     topics, errors, model_stopped = run_discovery(
                         client, model, texts, n_samples, progress, status,
                         st.session_state["discovery_prompt"],
-                        stop_check=check_stop
+                        stop_check=check_stop,
+                        save_progress=make_save_callback(model, all_topics)
                     )
 
                     # Show errors if any
@@ -1936,10 +1968,9 @@ with tab1:
 
             st.session_state["discovered_topics"] = all_topics
             # Clean up partial state
-            if "discovered_topics_partial" in st.session_state:
-                del st.session_state["discovered_topics_partial"]
-            if "discovery_completed_models" in st.session_state:
-                del st.session_state["discovery_completed_models"]
+            for key in ["discovered_topics_partial", "discovery_completed_models", "discovery_in_progress_model"]:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.toast(f"Discovery complete! Found {len(all_topics)} topics", icon="✅")
 
             st.divider()
