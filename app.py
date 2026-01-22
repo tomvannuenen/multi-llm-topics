@@ -1184,7 +1184,7 @@ with tab1:
             stop_placeholder.empty()  # Remove stop button
             st.session_state["discovery_running"] = False
             st.session_state["discovered_topics"] = all_topics
-            st.toast(f"Discovery complete! Found {len(all_topics)} topics", icon="✓")
+            st.toast(f"Discovery complete! Found {len(all_topics)} topics", icon="✅")
 
             st.divider()
             st.subheader("Discovery Complete!")
@@ -1348,7 +1348,7 @@ with tab2:
 
                 taxonomy = result.get("taxonomy", [])
                 st.session_state["taxonomy"] = taxonomy
-                st.toast(f"Consolidated to {len(taxonomy)} categories", icon="✓")
+                st.toast(f"Consolidated to {len(taxonomy)} categories", icon="✅")
 
                 st.success(f"Created {len(taxonomy)} categories!")
 
@@ -1506,7 +1506,7 @@ with tab3:
                 ])
 
                 st.session_state["results_df"] = results_df
-                st.toast(f"Labeled {len(results)} documents", icon="✓")
+                st.toast(f"Labeled {len(results)} documents", icon="✅")
                 st.success(f"Assigned topics to {len(results)} documents!")
 
                 # Show distribution
