@@ -928,6 +928,29 @@ if "data" in st.session_state:
     render_step_progress()
     render_results_banner()
 
+    # Data preview
+    with st.expander("📄 Data Preview", expanded=False):
+        df = st.session_state["data"]
+        text_col = st.session_state.get("text_column", df.columns[0])
+        id_col = st.session_state.get("id_column")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Rows", f"{len(df):,}")
+        col2.metric("Columns", len(df.columns))
+        col3.metric("Text Column", text_col)
+
+        # Show preview of the data
+        st.dataframe(
+            df.head(10),
+            use_container_width=True,
+            height=250
+        )
+
+        # Show sample text
+        st.caption("**Sample text:**")
+        sample_text = df[text_col].dropna().iloc[0] if len(df) > 0 else "No text"
+        st.text(sample_text[:500] + "..." if len(str(sample_text)) > 500 else sample_text)
+
 st.divider()
 
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
