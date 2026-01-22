@@ -676,31 +676,49 @@ with st.sidebar:
     with st.expander("🖥️ Local Models (Ollama)", expanded=False):
         st.caption("Run models locally for free using [Ollama](https://ollama.com)")
 
-        ollama_enabled = st.checkbox(
-            "Enable Ollama",
-            value=st.session_state.get("ollama_enabled", False),
-            help="Connect to a local Ollama instance for free local models"
-        )
-        st.session_state["ollama_enabled"] = ollama_enabled
+        # Quick check if Ollama is reachable (to detect if running locally vs cloud)
+        ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
+        ollama_available = False
+        try:
+            test_response = requests.get(f"{ollama_url}/api/tags", timeout=2)
+            ollama_available = test_response.status_code == 200
+        except:
+            pass
 
-        if ollama_enabled:
-            ollama_url = st.text_input(
-                "Ollama URL",
-                value=st.session_state.get("ollama_url", "http://localhost:11434"),
-                help="URL of your Ollama instance"
+        if not ollama_available:
+            # Show message for online/cloud users
+            st.info("**Ollama requires running the app locally.**")
+            st.markdown("""
+            To use free local models:
+            1. Clone the repo: `git clone https://github.com/tomvannuenen/multi-llm-topics`
+            2. Install [Ollama](https://ollama.com) and pull models
+            3. Run: `streamlit run app.py`
+
+            See the [README](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free) for detailed instructions.
+            """)
+        else:
+            # Ollama is available - show enable checkbox
+            ollama_enabled = st.checkbox(
+                "Enable Ollama",
+                value=st.session_state.get("ollama_enabled", False),
+                help="Connect to a local Ollama instance for free local models"
             )
-            st.session_state["ollama_url"] = ollama_url
+            st.session_state["ollama_enabled"] = ollama_enabled
 
-            # Test connection and show available models
-            ollama_models = fetch_ollama_models(ollama_url)
-            if ollama_models:
-                st.success(f"✓ Connected — {len(ollama_models)} models available")
-                model_names = [m.replace("ollama/", "") for m in ollama_models.keys()]
-                st.caption(f"Models: {', '.join(model_names[:5])}{'...' if len(model_names) > 5 else ''}")
-            else:
-                st.warning("Could not connect to Ollama. Make sure it's running.")
-                st.caption("Install: `curl -fsSL https://ollama.com/install.sh | sh`")
-                st.caption("Then run: `ollama pull llama3.2` to download a model")
+            if ollama_enabled:
+                ollama_url = st.text_input(
+                    "Ollama URL",
+                    value=ollama_url,
+                    help="URL of your Ollama instance"
+                )
+                st.session_state["ollama_url"] = ollama_url
+
+                # Show available models
+                ollama_models = fetch_ollama_models(ollama_url)
+                if ollama_models:
+                    st.success(f"✓ Connected — {len(ollama_models)} models available")
+                    model_names = [m.replace("ollama/", "") for m in ollama_models.keys()]
+                    st.caption(f"Models: {', '.join(model_names[:5])}{'...' if len(model_names) > 5 else ''}")
 
     st.divider()
 
