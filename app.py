@@ -588,13 +588,13 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
             batches_without_new += 1
             if batches_without_new >= early_stop_batches:
                 early_stopped = True
-                status_text.text(f"Early stop: {batches_without_new} batches without new topics. {len(topics)} topics found.")
+                status_text.text(f"✓ Topic discovery complete — no new topics in {batches_without_new} batches ({len(topics)} topics found)")
                 break
         else:
             batches_without_new = 0
 
     if not early_stopped:
-        status_text.text(f"Complete: {len(topics)} topics from {completed} documents")
+        status_text.text(f"✓ Complete: {len(topics)} topics from {completed} documents")
 
     # Return errors for display
     return topics, errors
@@ -608,34 +608,81 @@ def run_consolidation(client, model, topics, progress_bar, status_text):
     # Get the actual model name for API (strip ollama/ prefix)
     api_model = get_model_for_api(model)
 
-    status_text.text(f"Sending {len(topics)} topics to {format_model_name(model)}...")
-    progress_bar.progress(0.3)
+    # Update status (progress_bar may be a placeholder if using spinner)
+    try:
+        status_text.text(f"Sending {len(topics)} topics to {format_model_name(model)}...")
+    except:
+        pass
 
-    response = client.chat.completions.create(
-        model=api_model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=16000,
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
+    try:
+        # Try with JSON mode first
+        try:
+            response = client.chat.completions.create(
+                model=api_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=16000,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+        except Exception as e:
+            # Some models don't support JSON mode, try without it
+            if "json" in str(e).lower() or "response_format" in str(e).lower():
+                status_text.text(f"Retrying without JSON mode...")
+                response = client.chat.completions.create(
+                    model=api_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=16000,
+                    temperature=0.0,
+                )
+            else:
+                raise
 
-    progress_bar.progress(0.8)
-    content = response.choices[0].message.content
+        try:
+            progress_bar.progress(0.8)
+        except:
+            pass
+        content = response.choices[0].message.content
 
-    if not content:
-        return {"taxonomy": [], "unmapped": []}
+        if not content:
+            return {"taxonomy": [], "unmapped": [], "error": "Empty response from model"}
 
-    # Strip markdown if present
-    clean = content.strip()
-    if clean.startswith("```"):
-        clean = clean[clean.find("\n") + 1:]
-        if clean.endswith("```"):
-            clean = clean[:-3].strip()
+        # Strip markdown if present
+        clean = content.strip()
+        if clean.startswith("```"):
+            clean = clean[clean.find("\n") + 1:]
+            if "```" in clean:
+                clean = clean[:clean.find("```")].strip()
 
-    progress_bar.progress(1.0)
-    status_text.text("Consolidation complete!")
+        # Try to find JSON object using brace matching (handles extra text)
+        brace_count = 0
+        start_idx = None
+        end_idx = None
+        for i, char in enumerate(clean):
+            if char == '{':
+                if start_idx is None:
+                    start_idx = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_idx is not None:
+                    end_idx = i + 1
+                    break
 
-    return json.loads(clean)
+        if start_idx is not None and end_idx is not None:
+            clean = clean[start_idx:end_idx]
+
+        try:
+            progress_bar.progress(1.0)
+            status_text.text("Consolidation complete!")
+        except:
+            pass
+
+        return json.loads(clean)
+
+    except json.JSONDecodeError as e:
+        return {"taxonomy": [], "unmapped": [], "error": f"JSON parse error: {str(e)[:200]}"}
+    except Exception as e:
+        return {"taxonomy": [], "unmapped": [], "error": f"API error: {str(e)[:200]}"}
 
 
 def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_text, assignment_prompt):
@@ -978,15 +1025,28 @@ with st.sidebar:
             )
             st.session_state["id_column"] = id_col
 
-        # Clear data button
-        if st.button("Clear data", type="secondary", use_container_width=True):
-            for key in ["data", "discovered_topics", "approved_topics", "topic_selection",
-                        "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
-                        "assignments", "results_df", "spot_check_sample", "spot_check_ratings",
-                        "text_column", "id_column"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
+        # Clear data button with confirmation
+        has_pipeline_data = any(key in st.session_state for key in
+                                ["discovered_topics", "taxonomy", "assignments"])
+        if has_pipeline_data:
+            # Show confirmation if pipeline has data
+            confirm_clear = st.checkbox("I want to clear all data and results", key="confirm_clear_data")
+            if st.button("Clear data", type="secondary", use_container_width=True, disabled=not confirm_clear):
+                for key in ["data", "discovered_topics", "discovered_topics_partial", "discovery_completed_models",
+                            "approved_topics", "topic_selection",
+                            "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
+                            "assignments", "assignments_partial", "results_df", "spot_check_sample", "spot_check_ratings",
+                            "text_column", "id_column", "confirm_clear_data"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+        else:
+            # No pipeline data, just clear without confirmation
+            if st.button("Clear data", type="secondary", use_container_width=True):
+                for key in ["data", "text_column", "id_column"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
 
     st.divider()
 
@@ -1372,10 +1432,16 @@ with tab1:
         elif not selected_models:
             st.error("Please select at least one model")
         else:
-            st.session_state["discovery_running"] = True
             df = st.session_state["data"]
             text_col = st.session_state["text_column"]
             texts = df[text_col].dropna().tolist()
+
+            # Validate text column has data
+            if not texts:
+                st.error(f"Text column '{text_col}' contains no valid data. Please select a different column.")
+                st.stop()
+
+            st.session_state["discovery_running"] = True
 
             # Stop button
             stop_placeholder = st.empty()
@@ -1698,15 +1764,25 @@ with tab2:
             if not client:
                 st.error("Please set your OpenRouter API key for cloud models")
             else:
-                progress = st.progress(0)
-                status = st.empty()
+                with st.spinner(f"Consolidating {len(topics)} topics with {format_model_name(model)}... (this may take a minute)"):
+                    # Use a placeholder for status since we're using spinner
+                    status = st.empty()
+                    progress = st.empty()  # Dummy progress for API compatibility
 
-                result = run_consolidation(client, model, list(topics.keys()), progress, status)
+                    result = run_consolidation(client, model, list(topics.keys()), progress, status)
 
-                taxonomy = result.get("taxonomy", [])
-                st.session_state["taxonomy"] = taxonomy
-                st.toast(f"Consolidated to {len(taxonomy)} categories", icon="✅")
-                st.rerun()  # Refresh to show review section
+                # Check for errors
+                if "error" in result:
+                    st.error(f"Consolidation failed: {result['error']}")
+                    st.info("Try a different model or check if your API key has sufficient credits.")
+                else:
+                    taxonomy = result.get("taxonomy", [])
+                    if not taxonomy:
+                        st.warning("Consolidation returned no categories. Try a different model.")
+                    else:
+                        st.session_state["taxonomy"] = taxonomy
+                        st.toast(f"Consolidated to {len(taxonomy)} categories", icon="✅")
+                        st.rerun()  # Refresh to show review section
 
         # Taxonomy Review Section (shown when consolidation complete but not yet approved)
         if "taxonomy" in st.session_state and "approved_taxonomy" not in st.session_state:
@@ -1772,9 +1848,13 @@ with tab2:
                         st.session_state["taxonomy_edits"][f"{i}_desc"] = edited_desc
 
             # Summary and approve button
-            st.info(f"**{selected_count} of {len(taxonomy)} categories selected** for assignment")
+            if selected_count == 0:
+                st.error("**Select at least one category** to continue with assignment.")
+            else:
+                st.info(f"**{selected_count} of {len(taxonomy)} categories selected** for assignment")
 
-            if st.button("✅ Approve Taxonomy & Continue", type="primary", use_container_width=True, key="approve_taxonomy"):
+            if st.button("✅ Approve Taxonomy & Continue", type="primary", use_container_width=True,
+                        key="approve_taxonomy", disabled=(selected_count == 0)):
                 approved_taxonomy = []
                 for i, cat in enumerate(taxonomy):
                     if st.session_state["taxonomy_selection"].get(i, True):
@@ -1982,6 +2062,12 @@ with tab3:
                 id_col = st.session_state["id_column"]
 
                 texts = df[text_col].dropna().tolist()[:n_docs]
+
+                # Validate text column has data
+                if not texts:
+                    st.error(f"Text column '{text_col}' contains no valid data. Please select a different column.")
+                    st.stop()
+
                 if id_col == "(row index)":
                     ids = list(range(len(texts)))
                 else:
