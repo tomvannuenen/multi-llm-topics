@@ -107,6 +107,46 @@ For CLI usage, set your API key as an environment variable:
 export OPENROUTER_API_KEY="your-key-here"
 ```
 
+## Running Locally with Ollama (Free)
+
+Run the entire pipeline on your machine with zero API costs using [Ollama](https://ollama.com).
+
+**Step 1: Install Ollama**
+```bash
+# Mac/Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Or download from https://ollama.com for Mac/Windows
+```
+
+**Step 2: Pull some models**
+```bash
+ollama pull llama3.2        # Fast, good for discovery/assignment
+ollama pull mistral         # Good general purpose
+ollama pull gemma2          # Google's model
+ollama pull qwen2.5         # Strong reasoning, good for consolidation
+```
+
+**Step 3: Run the app**
+```bash
+streamlit run app.py
+```
+
+**Step 4: Enable Ollama in the app**
+1. In the sidebar, expand "Local Models (Ollama)"
+2. Check "Enable Ollama"
+3. Your installed models appear with `[local]` tag in model selectors
+
+**Step 5: Select local models for each step**
+- **Discovery**: Pick 2-3 different models (e.g., llama3.2, mistral, gemma2) for diverse perspectives
+- **Consolidation**: Pick a strong reasoning model (e.g., qwen2.5 or mistral)
+- **Assignment**: Pick a fast model (e.g., llama3.2)
+
+**Hardware requirements:**
+- 8GB+ RAM for 7B parameter models
+- 16GB+ RAM for larger models (13B+)
+- GPU optional but recommended (Ollama auto-detects)
+
 ## Command Line Usage
 
 ### 1. Topic Discovery
