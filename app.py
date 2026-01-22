@@ -106,9 +106,10 @@ if not st.session_state["welcome_dismissed"]:
 
 # Default recommended models (used if API fetch fails)
 # Free models have :free suffix - great for testing!
+# Note: Llama free models are often rate-limited, so we prefer Mistral/Google/DeepSeek
 DEFAULT_DISCOVERY_MODELS = [
     "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
     "deepseek/deepseek-chat-v3-0324:free",
     "anthropic/claude-haiku-4.5",
 ]
@@ -121,8 +122,8 @@ DEFAULT_CONSOLIDATION_MODELS = [
 
 DEFAULT_ASSIGNMENT_MODELS = [
     "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemini-2.0-flash-001",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
+    "deepseek/deepseek-chat-v3-0324:free",
 ]
 
 
@@ -627,6 +628,10 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
     # Get the actual model name for API (strip ollama/ prefix)
     api_model = get_model_for_api(model)
 
+    # Use fewer workers for free models to avoid rate limits
+    is_free_model = ":free" in model.lower() or model.startswith("ollama/")
+    max_workers = 3 if is_free_model else 10
+
     results = []
     total = len(texts)
 
@@ -690,7 +695,7 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
         except Exception as e:
             return {"id": doc_id, "error": str(e)[:100]}
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(assign_single, text, doc_id): i
                    for i, (text, doc_id) in enumerate(zip(texts, ids))}
 
@@ -1039,9 +1044,10 @@ st.divider()
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
 
 # Recommended models by task (free models first for easy testing)
+# Note: Llama free models are often rate-limited, so we use Mistral/Google/DeepSeek instead
 RECOMMENDED_DISCOVERY = [
     "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
     "deepseek/deepseek-chat-v3-0324:free",
     "anthropic/claude-haiku-4.5",
     "openai/gpt-4.1-nano",
@@ -1056,7 +1062,7 @@ RECOMMENDED_CONSOLIDATION = [
 
 RECOMMENDED_ASSIGNMENT = [
     "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
     "deepseek/deepseek-chat-v3-0324:free",
 ]
 
