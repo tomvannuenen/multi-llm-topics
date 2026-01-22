@@ -69,6 +69,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def inject_beforeunload_warning(active: bool):
+    """Inject JavaScript to warn user before leaving page when processing is active."""
+    if active:
+        st.markdown("""
+        <script>
+        window.onbeforeunload = function(e) {
+            e.preventDefault();
+            e.returnValue = 'Processing is in progress. Are you sure you want to leave?';
+            return e.returnValue;
+        };
+        </script>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <script>
+        window.onbeforeunload = null;
+        </script>
+        """, unsafe_allow_html=True)
+
+
 # Initialize welcome_dismissed early to prevent dialog from reopening on reruns
 if "welcome_dismissed" not in st.session_state:
     st.session_state["welcome_dismissed"] = False
@@ -123,6 +143,11 @@ def show_welcome_dialog():
 if not st.session_state["welcome_dismissed"]:
     show_welcome_dialog()
     st.session_state["welcome_dismissed"] = True  # Mark as shown immediately
+
+
+# Warn user before leaving page if processing is active
+is_processing = st.session_state.get("discovery_running", False)
+inject_beforeunload_warning(is_processing)
 
 
 # Default recommended models (used if API fetch fails)
@@ -227,7 +252,7 @@ def sort_models_for_task(models: dict, task: str = "discovery") -> list:
 
         if task == "consolidation":
             # For consolidation, prefer stronger (more expensive) models, but local/free first
-            # Put Ollama at very top (sort key -1), then free cloud (0), then paid (1)
+            # Put Ollama at very top (sort key -1), then free API (0), then paid (1)
             priority = -1 if is_ollama else (0 if is_free else 1)
             return (priority, -total_cost)
         else:
@@ -587,7 +612,7 @@ def run_discovery(client, model, texts, n_samples, progress_bar, status_text,
     is_free_model = ":free" in model.lower()
     is_local_model = model.startswith("ollama/")
     # Local models process sequentially, so 1 worker is optimal
-    # Free cloud models have rate limits, so use 3 workers
+    # Free API models have rate limits, so use 3 workers
     if is_local_model:
         max_workers = 1
     elif is_free_model:
@@ -1160,8 +1185,8 @@ with st.sidebar:
 
     # Always start expanded - Streamlit remembers user's open/close action
     with st.expander("Settings", expanded=True):
-        # --- OpenRouter (Cloud Models) ---
-        st.caption("**☁️ Cloud Models (OpenRouter)**")
+        # --- OpenRouter API ---
+        st.caption("**🌐 OpenRouter API**")
         api_key = st.text_input(
             "API Key",
             type="password",
@@ -1248,7 +1273,7 @@ with st.sidebar:
                 ollama_models = fetch_ollama_models(ollama_url)
                 if ollama_models:
                     st.success(f"✓ {len(ollama_models)} local models")
-                    st.caption("⚡ **Speed note:** Local models are slower than cloud APIs. "
+                    st.caption("⚡ **Speed note:** Local models are slower than remote APIs. "
                                "Speed depends on your hardware (GPU helps significantly).")
 
     st.divider()
@@ -1510,7 +1535,7 @@ def format_model_name(model_id: str, show_provider: bool = None) -> str:
 
     Args:
         model_id: The full model ID (e.g., "ollama/llama3.2" or "openai/gpt-4")
-        show_provider: If True, show [local] or [cloud] suffix. If None, auto-detect
+        show_provider: If True, show [local] or [api] suffix. If None, auto-detect
                       based on whether both Ollama and OpenRouter are enabled.
     """
     # Auto-detect whether to show provider labels
@@ -1528,7 +1553,7 @@ def format_model_name(model_id: str, show_provider: bool = None) -> str:
     else:
         # OpenRouter model - remove provider prefix for display
         name = model_id.split("/")[-1] if "/" in model_id else model_id
-        return f"{name} [cloud]" if show_provider else name
+        return f"{name} [api]" if show_provider else name
 
 
 # Tab 1: Discovery
@@ -1738,7 +1763,7 @@ with tab1:
         local_models_selected = [m for m in selected_models if m.startswith("ollama/")]
         if local_models_selected and not free_models_selected:  # Don't double-warn
             st.info(f"**Local models:** {len(local_models_selected)} Ollama model(s) selected. "
-                    f"Local inference is slower than cloud APIs — speed depends on your hardware (GPU recommended). "
+                    f"Local inference is slower than remote APIs — speed depends on your hardware (GPU recommended). "
                     f"Consider using fewer documents per model or a smaller model like `llama3.2:3b`.")
 
     # Show existing results or run button
@@ -1806,7 +1831,7 @@ with tab1:
         # Check if any OpenRouter models are selected (need API key)
         openrouter_models = [m for m in selected_models if not m.startswith("ollama/")]
         if openrouter_models and not get_client():
-            st.error("Please set your OpenRouter API key for cloud models")
+            st.error("Please set your OpenRouter API key to use API models")
         elif "data" not in st.session_state:
             st.error("Please upload data first")
         elif not selected_models:
@@ -2186,7 +2211,7 @@ with tab2:
         elif st.button("🔄 Consolidate Topics", type="primary", use_container_width=True):
             client = get_client(model)
             if not client:
-                st.error("Please set your OpenRouter API key for cloud models")
+                st.error("Please set your OpenRouter API key to use API models")
             else:
                 with st.spinner(f"Consolidating {len(topics)} topics with {format_model_name(model)}... (this may take a minute)"):
                     # Use a placeholder for status since we're using spinner
@@ -2477,7 +2502,7 @@ with tab3:
         elif st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
             client = get_client(model)
             if not client:
-                st.error("Please set your OpenRouter API key for cloud models")
+                st.error("Please set your OpenRouter API key to use API models")
             elif "data" not in st.session_state:
                 st.error("Please upload data first")
             else:
