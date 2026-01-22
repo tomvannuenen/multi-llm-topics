@@ -1057,10 +1057,13 @@ with tab1:
         filtered_models = [m for m in filtered_models
                           if any(m.lower().startswith(provider_map.get(p, "").lower()) for p in provider_filter)]
 
-    # Find defaults from filtered list
-    discovery_defaults = [m for m in RECOMMENDED_DISCOVERY if m in filtered_models][:3]
-    if not discovery_defaults and filtered_models:
-        discovery_defaults = filtered_models[:3]
+    # Find defaults from filtered list (only when not filtering by provider)
+    if provider_filter:
+        discovery_defaults = []  # Let user choose when filtering by provider
+    else:
+        discovery_defaults = [m for m in RECOMMENDED_DISCOVERY if m in filtered_models][:3]
+        if not discovery_defaults and filtered_models:
+            discovery_defaults = filtered_models[:3]
 
     col1, col2 = st.columns([2, 1])
 
