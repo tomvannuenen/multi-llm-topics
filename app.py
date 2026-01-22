@@ -792,7 +792,7 @@ def render_results_banner():
     state = get_step_state()
     if state["assignment"]:
         n_docs = len(st.session_state.get("results_df", []))
-        st.success(f"**Pipeline complete!** {n_docs} documents labeled. Go to **④ Results** to download.")
+        st.success(f"**Pipeline complete!** {n_docs} documents labeled — click **④ Results** tab to download.")
     elif state["consolidation"]:
         n_cats = len(st.session_state.get("taxonomy", []))
         st.info(f"**Taxonomy ready:** {n_cats} categories created. Continue to **③ Assignment**.")
@@ -1557,7 +1557,7 @@ with tab1:
                     del st.session_state["topic_selection"]
                 st.rerun()
         with col_next:
-            st.info("**Next →** Go to **② Consolidation**")
+            st.success("✓ Ready for next step — click the **② Consolidation** tab above")
 
 # Tab 2: Consolidation
 with tab2:
@@ -1784,7 +1784,7 @@ with tab2:
                     del st.session_state["approved_taxonomy"]
                     st.rerun()
             with col_next:
-                st.info("**Next →** Go to **③ Assignment**")
+                st.success("✓ Ready for next step — click the **③ Assignment** tab above")
 
 # Tab 3: Assignment
 with tab3:
@@ -2075,7 +2075,7 @@ with tab3:
                 else:
                     st.error(f"**Quality concerns.** Only {accuracy:.0f}% acceptable. Review your taxonomy and prompts.")
 
-            st.info("**Done!** Go to **④ Results** to download your data.")
+            st.success("✓ **Done!** Click the **④ Results** tab above to download your data.")
 
 # Tab 4: Results
 with tab4:
