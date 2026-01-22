@@ -647,72 +647,149 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
 
 # Sidebar
 with st.sidebar:
-    st.markdown("## 🏷️ Multi-LLM Topics")
-    st.caption("Discover themes in your text data using multiple AI models—via [OpenRouter](https://openrouter.ai) or locally with [Ollama](https://ollama.com). Different models find different patterns; together they produce more robust results.")
+    st.markdown("## Multi-LLM Topics")
+
+    # --- DATA SECTION ---
+    st.subheader("📄 Data")
+
+    if "data" not in st.session_state:
+        # Data source selection
+        data_source = st.radio(
+            "Source",
+            ["Upload file", "Sample data"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+
+        if data_source == "Sample data":
+            if st.button("Load Sample Data", use_container_width=True):
+                sample_path = Path(__file__).parent / "sample_data.csv"
+                if sample_path.exists():
+                    df = pd.read_csv(sample_path)
+                    st.session_state["data"] = df
+                    st.session_state["text_column"] = "text"
+                    st.session_state["id_column"] = "id"
+                    st.rerun()
+                else:
+                    st.error("Sample data file not found")
+            st.caption("100 sample posts to try out the app")
+        else:
+            uploaded_file = st.file_uploader(
+                "CSV or Parquet file",
+                type=["csv", "parquet"],
+                help="The app auto-detects common text columns (text, body, content)"
+            )
+            if uploaded_file:
+                if uploaded_file.name.endswith(".csv"):
+                    df = pd.read_csv(uploaded_file)
+                else:
+                    df = pd.read_parquet(uploaded_file)
+                st.session_state["data"] = df
+                st.rerun()
+    else:
+        # Data loaded - show info and options
+        df = st.session_state["data"]
+        st.success(f"✓ {len(df):,} rows loaded")
+
+        with st.expander("Column settings", expanded=False):
+            # Auto-detect text column (common names)
+            text_col_candidates = ["text", "body", "selftext", "content", "message", "post", "document"]
+            columns = df.columns.tolist()
+            default_text_idx = 0
+            for candidate in text_col_candidates:
+                if candidate in columns:
+                    default_text_idx = columns.index(candidate)
+                    break
+
+            # Auto-detect ID column
+            id_col_candidates = ["id", "post_id", "doc_id", "index", "name"]
+            default_id = "(row index)"
+            for candidate in id_col_candidates:
+                if candidate in columns:
+                    default_id = candidate
+                    break
+
+            # Use existing selection if available, otherwise use auto-detected
+            current_text = st.session_state.get("text_column", columns[default_text_idx])
+            current_id = st.session_state.get("id_column", default_id)
+
+            text_col = st.selectbox(
+                "Text column",
+                columns,
+                index=columns.index(current_text) if current_text in columns else default_text_idx,
+                help="Column containing the text to analyze"
+            )
+            st.session_state["text_column"] = text_col
+
+            id_col = st.selectbox(
+                "ID column",
+                ["(row index)"] + columns,
+                index=(["(row index)"] + columns).index(current_id) if current_id in ["(row index)"] + columns else 0,
+                help="Column with unique document IDs"
+            )
+            st.session_state["id_column"] = id_col
+
+        # Clear data button
+        if st.button("Clear data", type="secondary", use_container_width=True):
+            for key in ["data", "discovered_topics", "taxonomy", "assignments", "results_df",
+                        "text_column", "id_column"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
 
     st.divider()
 
-    # API Key
-    api_key = st.text_input(
-        "OpenRouter API Key",
-        type="password",
-        value=st.session_state.get("api_key", os.environ.get("OPENROUTER_API_KEY", "")),
-        help="Get your key at [openrouter.ai](https://openrouter.ai)"
-    )
-    if api_key:
-        # Only validate if key changed
-        if api_key != st.session_state.get("api_key_validated", ""):
-            with st.spinner("Validating API key..."):
-                try:
-                    # First validate the key
-                    response = requests.get(
-                        "https://openrouter.ai/api/v1/auth/key",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        timeout=10
-                    )
-                    if response.status_code == 200:
-                        st.session_state["api_key"] = api_key
-                        st.session_state["api_key_validated"] = api_key
-                        st.session_state["api_key_valid"] = True
-
-                        # Try to get actual credit balance
-                        credits_response = requests.get(
-                            "https://openrouter.ai/api/v1/credits",
+    # --- API SETTINGS SECTION ---
+    with st.expander("🔑 API Settings", expanded=not st.session_state.get("api_key_valid")):
+        api_key = st.text_input(
+            "OpenRouter API Key",
+            type="password",
+            value=st.session_state.get("api_key", os.environ.get("OPENROUTER_API_KEY", "")),
+            help="Get your key at [openrouter.ai](https://openrouter.ai)"
+        )
+        if api_key:
+            # Only validate if key changed
+            if api_key != st.session_state.get("api_key_validated", ""):
+                with st.spinner("Validating..."):
+                    try:
+                        response = requests.get(
+                            "https://openrouter.ai/api/v1/auth/key",
                             headers={"Authorization": f"Bearer {api_key}"},
                             timeout=10
                         )
-                        if credits_response.status_code == 200:
-                            credits_data = credits_response.json().get("data", {})
-                            total_credits = credits_data.get("total_credits", 0)
-                            total_usage = credits_data.get("total_usage", 0)
-                            remaining = total_credits - total_usage
-                            st.success(f"✓ Valid — ${remaining:.2f} credits remaining")
-                        else:
-                            # Fall back to key info
-                            data = response.json().get("data", {})
-                            usage = data.get("usage", 0)
-                            limit = data.get("limit")
-                            if limit is not None:
-                                remaining = limit - usage
-                                st.success(f"✓ Valid — ${remaining:.2f} credits remaining")
+                        if response.status_code == 200:
+                            st.session_state["api_key"] = api_key
+                            st.session_state["api_key_validated"] = api_key
+                            st.session_state["api_key_valid"] = True
+
+                            # Try to get actual credit balance
+                            credits_response = requests.get(
+                                "https://openrouter.ai/api/v1/credits",
+                                headers={"Authorization": f"Bearer {api_key}"},
+                                timeout=10
+                            )
+                            if credits_response.status_code == 200:
+                                credits_data = credits_response.json().get("data", {})
+                                total_credits = credits_data.get("total_credits", 0)
+                                total_usage = credits_data.get("total_usage", 0)
+                                remaining = total_credits - total_usage
+                                st.success(f"✓ ${remaining:.2f} remaining")
                             else:
-                                st.success("✓ API key valid")
-                    else:
+                                st.success("✓ Valid")
+                        else:
+                            st.session_state["api_key_valid"] = False
+                            st.error("Invalid API key")
+                    except Exception as e:
                         st.session_state["api_key_valid"] = False
-                        st.error("Invalid API key")
-                except Exception as e:
-                    st.session_state["api_key_valid"] = False
-                    st.error(f"Could not validate key: {e}")
-        elif st.session_state.get("api_key_valid"):
-            st.success("✓ API key valid")
+                        st.error(f"Error: {e}")
+            elif st.session_state.get("api_key_valid"):
+                st.success("✓ Valid")
 
-    st.divider()
+        # Ollama (nested inside API settings)
+        st.caption("---")
+        st.caption("**Local Models (Ollama)**")
 
-    # Ollama (local models) configuration
-    with st.expander("🖥️ Local Models (Ollama)", expanded=False):
-        st.caption("Run models locally for free using [Ollama](https://ollama.com)")
-
-        # Quick check if Ollama is reachable (to detect if running locally vs cloud)
+        # Quick check if Ollama is reachable
         ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
         ollama_available = False
         try:
@@ -722,122 +799,18 @@ with st.sidebar:
             pass
 
         if not ollama_available:
-            # Show message for online/cloud users
-            st.info("**Run the app locally to use Ollama.**")
-            st.caption("Clone the repo, install [Ollama](https://ollama.com), then run `streamlit run app.py`")
-            st.caption("[Setup instructions →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
+            st.caption("Run locally to use Ollama. [Instructions →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
         else:
-            # Ollama is available - show enable checkbox
             ollama_enabled = st.checkbox(
                 "Enable Ollama",
                 value=st.session_state.get("ollama_enabled", False),
-                help="Connect to a local Ollama instance for free local models"
             )
             st.session_state["ollama_enabled"] = ollama_enabled
 
             if ollama_enabled:
-                ollama_url = st.text_input(
-                    "Ollama URL",
-                    value=ollama_url,
-                    help="URL of your Ollama instance"
-                )
-                st.session_state["ollama_url"] = ollama_url
-
-                # Show available models
                 ollama_models = fetch_ollama_models(ollama_url)
                 if ollama_models:
-                    st.success(f"✓ Connected — {len(ollama_models)} models available")
-                    model_names = [m.replace("ollama/", "") for m in ollama_models.keys()]
-                    st.caption(f"Models: {', '.join(model_names[:5])}{'...' if len(model_names) > 5 else ''}")
-
-    st.divider()
-
-    # Sample data option
-    if "data" not in st.session_state:
-        if st.button("📋 Load Sample Data", help="Load 100 sample posts to try out the app"):
-            sample_path = Path(__file__).parent / "sample_data.csv"
-            if sample_path.exists():
-                df = pd.read_csv(sample_path)
-                st.session_state["data"] = df
-                st.session_state["text_column"] = "text"
-                st.session_state["id_column"] = "id"
-                st.rerun()
-            else:
-                st.error("Sample data file not found")
-        st.caption("or upload your own:")
-
-    # File upload
-    uploaded_file = st.file_uploader(
-        "Upload Data",
-        type=["csv", "parquet"],
-        help="CSV or Parquet file with text data. The app auto-detects common text columns (text, body, selftext, content) but you can change it after uploading."
-    )
-
-    if uploaded_file:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_parquet(uploaded_file)
-        st.session_state["data"] = df
-
-    # Show data info and column selection when data is loaded
-    if "data" in st.session_state:
-        df = st.session_state["data"]
-        st.success(f"Loaded {len(df):,} rows")
-
-        # Auto-detect text column (common names)
-        text_col_candidates = ["text", "body", "selftext", "content", "message", "post", "document"]
-        columns = df.columns.tolist()
-        default_text_idx = 0
-        for candidate in text_col_candidates:
-            if candidate in columns:
-                default_text_idx = columns.index(candidate)
-                break
-
-        # Auto-detect ID column
-        id_col_candidates = ["id", "post_id", "doc_id", "index", "name"]
-        default_id = "(row index)"
-        for candidate in id_col_candidates:
-            if candidate in columns:
-                default_id = candidate
-                break
-
-        # Use existing selection if available, otherwise use auto-detected
-        current_text = st.session_state.get("text_column", columns[default_text_idx])
-        current_id = st.session_state.get("id_column", default_id)
-
-        # Column selection
-        text_col = st.selectbox(
-            "Text column",
-            columns,
-            index=columns.index(current_text) if current_text in columns else default_text_idx,
-            help="Column containing the text to analyze"
-        )
-        st.session_state["text_column"] = text_col
-
-        id_col = st.selectbox(
-            "ID column",
-            ["(row index)"] + columns,
-            index=(["(row index)"] + columns).index(current_id) if current_id in ["(row index)"] + columns else 0,
-            help="Column with unique document IDs"
-        )
-        st.session_state["id_column"] = id_col
-
-    st.divider()
-
-    # Show completed steps
-    steps_done = []
-    if "data" in st.session_state:
-        steps_done.append("✓ Data loaded")
-    if "discovered_topics" in st.session_state:
-        steps_done.append("✓ Discovery done")
-    if "taxonomy" in st.session_state:
-        steps_done.append("✓ Consolidated")
-    if "assignments" in st.session_state:
-        steps_done.append("✓ Assigned")
-
-    if steps_done:
-        st.caption(" → ".join(steps_done))
+                    st.success(f"✓ {len(ollama_models)} local models")
 
 # Main content
 
@@ -896,7 +869,13 @@ if "data" not in st.session_state:
         *[View on GitHub](https://github.com/tomvannuenen/multi-llm-topics) • Created by Tom van Nuenen*
         """)
 
+# Step progress header (always visible when data loaded)
+if "data" in st.session_state:
     st.divider()
+    render_step_progress()
+    render_results_banner()
+
+st.divider()
 
 tab1, tab2, tab3, tab4 = st.tabs(["① Discovery", "② Consolidation", "③ Assignment", "④ Results"])
 
@@ -932,6 +911,51 @@ def format_model_name(model_id: str) -> str:
     # Remove provider prefix for display, keep :free suffix visible
     name = model_id.split("/")[-1] if "/" in model_id else model_id
     return name
+
+
+def get_step_state():
+    """Get the completion state of each pipeline step."""
+    return {
+        "data": "data" in st.session_state,
+        "discovery": "discovered_topics" in st.session_state,
+        "consolidation": "taxonomy" in st.session_state,
+        "assignment": "assignments" in st.session_state,
+    }
+
+
+def render_step_progress():
+    """Render a visual progress indicator for the pipeline steps."""
+    state = get_step_state()
+    cols = st.columns(4)
+    steps = [
+        ("📄", "Data", state["data"], None),
+        ("🔍", "Discovery", state["discovery"], state["data"]),
+        ("🔄", "Consolidate", state["consolidation"], state["discovery"]),
+        ("🏷️", "Assign", state["assignment"], state["consolidation"]),
+    ]
+    for i, (icon, name, done, prev_done) in enumerate(steps):
+        with cols[i]:
+            if done:
+                st.markdown(f"**{icon} :green[{name}] ✓**")
+            elif prev_done is None or prev_done:  # First step or previous complete
+                st.markdown(f"**{icon} :blue[{name}]** ←")
+            else:
+                st.markdown(f"{icon} :gray[{name}]")
+
+
+def render_results_banner():
+    """Show a banner indicating current pipeline state and next step."""
+    state = get_step_state()
+    if state["assignment"]:
+        n_docs = len(st.session_state.get("results_df", []))
+        st.success(f"**Pipeline complete!** {n_docs} documents labeled. Go to **④ Results** to download.")
+    elif state["consolidation"]:
+        n_cats = len(st.session_state.get("taxonomy", []))
+        st.info(f"**Taxonomy ready:** {n_cats} categories created. Continue to **③ Assignment**.")
+    elif state["discovery"]:
+        n_topics = len(st.session_state.get("discovered_topics", {}))
+        st.info(f"**Discovery done:** {n_topics} topics found. Continue to **② Consolidation**.")
+
 
 # Tab 1: Discovery
 with tab1:
@@ -1095,6 +1119,7 @@ with tab1:
                 st.success(f"Found {len(topics)} topics")
 
             st.session_state["discovered_topics"] = all_topics
+            st.toast(f"Discovery complete! Found {len(all_topics)} topics", icon="✓")
 
             st.divider()
             st.subheader("Discovery Complete!")
@@ -1184,7 +1209,8 @@ with tab2:
                 st.success("Prompt saved!")
 
     if "discovered_topics" not in st.session_state:
-        st.info("Run discovery first, or upload existing topics.")
+        st.warning("**Complete ① Discovery first** to discover topics from your documents.")
+        st.caption("Or upload topics from a previous run:")
 
         uploaded_topics = st.file_uploader(
             "Upload discovered topics (JSON)",
@@ -1200,6 +1226,7 @@ with tab2:
                 st.session_state["discovered_topics"] = topics_data
             st.success(f"Loaded {len(st.session_state['discovered_topics'])} topics")
             st.rerun()
+        st.stop()  # Don't show rest of tab until topics available
     else:
         topics = st.session_state["discovered_topics"]
 
@@ -1239,6 +1266,7 @@ with tab2:
 
                 taxonomy = result.get("taxonomy", [])
                 st.session_state["taxonomy"] = taxonomy
+                st.toast(f"Consolidated to {len(taxonomy)} categories", icon="✓")
 
                 st.success(f"Created {len(taxonomy)} categories!")
 
@@ -1289,7 +1317,8 @@ with tab3:
                 st.success("Prompt saved!")
 
     if "taxonomy" not in st.session_state:
-        st.info("Run consolidation first, or upload existing taxonomy.")
+        st.warning("**Complete ② Consolidation first** to create a taxonomy.")
+        st.caption("Or upload a taxonomy from a previous run:")
 
         uploaded_tax = st.file_uploader(
             "Upload taxonomy (JSON)",
@@ -1302,6 +1331,7 @@ with tab3:
             st.session_state["taxonomy"] = tax_data.get("taxonomy", tax_data)
             st.success(f"Loaded {len(st.session_state['taxonomy'])} categories")
             st.rerun()
+        st.stop()  # Don't show rest of tab until taxonomy available
     else:
         taxonomy = st.session_state["taxonomy"]
 
@@ -1377,6 +1407,7 @@ with tab3:
                 ])
 
                 st.session_state["results_df"] = results_df
+                st.toast(f"Labeled {len(results)} documents", icon="✓")
                 st.success(f"Assigned topics to {len(results)} documents!")
 
                 # Show distribution
