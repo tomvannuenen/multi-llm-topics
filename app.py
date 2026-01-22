@@ -703,6 +703,14 @@ def run_assignment(client, model, texts, ids, taxonomy, progress_bar, status_tex
             progress_bar.progress((i + 1) / total)
             status_text.text(f"Assigned {i + 1}/{total} documents")
 
+            # Save partial results every 10 documents
+            if (i + 1) % 10 == 0:
+                st.session_state["assignments_partial"] = results.copy()
+
+    # Clean up partial state on completion
+    if "assignments_partial" in st.session_state:
+        del st.session_state["assignments_partial"]
+
     return results
 
 
@@ -1254,7 +1262,8 @@ with tab1:
         with col_rerun:
             if st.button("🔄 Re-run Discovery", use_container_width=True):
                 # Clear discovery and all downstream
-                for key in ["discovered_topics", "approved_topics", "topic_selection",
+                for key in ["discovered_topics", "discovered_topics_partial", "discovery_completed_models",
+                           "approved_topics", "topic_selection",
                            "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
                            "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
                     if key in st.session_state:
@@ -1263,12 +1272,49 @@ with tab1:
         with col_clear:
             if st.button("🗑️ Clear Results", use_container_width=True, type="secondary"):
                 # Clear discovery and all downstream
-                for key in ["discovered_topics", "approved_topics", "topic_selection",
+                for key in ["discovered_topics", "discovered_topics_partial", "discovery_completed_models",
+                           "approved_topics", "topic_selection",
                            "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
                            "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
+    # Show partial results if discovery was interrupted
+    elif "discovered_topics_partial" in st.session_state and st.session_state["discovered_topics_partial"]:
+        partial_topics = st.session_state["discovered_topics_partial"]
+        completed = st.session_state.get("discovery_completed_models", [])
+        st.warning(f"⚠️ **Partial results:** {len(partial_topics)} topics from {len(completed)} model(s)")
+
+        col_use, col_resume, col_clear = st.columns(3)
+        with col_use:
+            if st.button("✅ Use Partial Results", use_container_width=True, type="primary"):
+                st.session_state["discovered_topics"] = partial_topics
+                del st.session_state["discovered_topics_partial"]
+                if "discovery_completed_models" in st.session_state:
+                    del st.session_state["discovery_completed_models"]
+                st.rerun()
+        with col_resume:
+            if st.button("▶️ Resume Discovery", use_container_width=True):
+                st.session_state["discovery_running"] = True
+                st.rerun()
+        with col_clear:
+            if st.button("🗑️ Discard", use_container_width=True, type="secondary"):
+                del st.session_state["discovered_topics_partial"]
+                if "discovery_completed_models" in st.session_state:
+                    del st.session_state["discovery_completed_models"]
+                st.rerun()
+
+        # Show what we have
+        with st.expander(f"📋 Partial Topics ({len(partial_topics)})", expanded=False):
+            st.dataframe(
+                pd.DataFrame([
+                    {"Topic": t, "Count": d["count"], "Models": ", ".join(d["models"])}
+                    for t, d in sorted(partial_topics.items(), key=lambda x: -x[1]["count"])
+                ]),
+                use_container_width=True,
+                height=300
+            )
+
     elif st.button("🚀 Start Discovery", type="primary", use_container_width=True):
         # Check if any OpenRouter models are selected (need API key)
         openrouter_models = [m for m in selected_models if not m.startswith("ollama/")]
@@ -1291,38 +1337,63 @@ with tab1:
                 st.warning("Discovery stopped by user")
                 st.rerun()
 
-            all_topics = {}
+            # Load any existing progress
+            all_topics = st.session_state.get("discovered_topics_partial", {})
+            completed_models = st.session_state.get("discovery_completed_models", [])
 
             for model in selected_models:
+                # Skip already completed models (for resume)
+                if model in completed_models:
+                    st.success(f"✓ {format_model_name(model)} already complete")
+                    continue
+
                 st.subheader(f"Running: {format_model_name(model)}")
                 progress = st.progress(0)
                 status = st.empty()
 
-                # Get client for this specific model (routes to Ollama or OpenRouter)
-                client = get_client(model)
-                topics, errors = run_discovery(client, model, texts, n_samples, progress, status,
-                                               st.session_state["discovery_prompt"])
+                try:
+                    # Get client for this specific model (routes to Ollama or OpenRouter)
+                    client = get_client(model)
+                    topics, errors = run_discovery(client, model, texts, n_samples, progress, status,
+                                                   st.session_state["discovery_prompt"])
 
-                # Show errors if any
-                if errors:
-                    with st.expander(f"⚠️ {len(errors)} errors occurred", expanded=False):
-                        for err in errors[:10]:  # Show first 10
-                            st.caption(err)
-                        if len(errors) > 10:
-                            st.caption(f"... and {len(errors) - 10} more")
+                    # Show errors if any
+                    if errors:
+                        with st.expander(f"⚠️ {len(errors)} errors occurred", expanded=False):
+                            for err in errors[:10]:  # Show first 10
+                                st.caption(err)
+                            if len(errors) > 10:
+                                st.caption(f"... and {len(errors) - 10} more")
 
-                # Merge topics
-                for t, data in topics.items():
-                    if t not in all_topics:
-                        all_topics[t] = {"models": [], "count": 0, "description": data.get("description", "")}
-                    all_topics[t]["models"].append(model.split("/")[-1])
-                    all_topics[t]["count"] += data.get("count", 1)
+                    # Merge topics
+                    for t, data in topics.items():
+                        if t not in all_topics:
+                            all_topics[t] = {"models": [], "count": 0, "description": data.get("description", "")}
+                        all_topics[t]["models"].append(model.split("/")[-1])
+                        all_topics[t]["count"] += data.get("count", 1)
 
-                st.success(f"Found {len(topics)} topics")
+                    st.success(f"Found {len(topics)} topics")
+
+                    # Save progress after each model completes
+                    completed_models.append(model)
+                    st.session_state["discovered_topics_partial"] = all_topics
+                    st.session_state["discovery_completed_models"] = completed_models
+
+                except Exception as e:
+                    st.error(f"Error with {format_model_name(model)}: {str(e)[:200]}")
+                    st.warning("Progress saved. You can continue with other models or export partial results.")
+                    # Save what we have so far
+                    st.session_state["discovered_topics_partial"] = all_topics
+                    st.session_state["discovery_completed_models"] = completed_models
 
             stop_placeholder.empty()  # Remove stop button
             st.session_state["discovery_running"] = False
             st.session_state["discovered_topics"] = all_topics
+            # Clean up partial state
+            if "discovered_topics_partial" in st.session_state:
+                del st.session_state["discovered_topics_partial"]
+            if "discovery_completed_models" in st.session_state:
+                del st.session_state["discovery_completed_models"]
             st.toast(f"Discovery complete! Found {len(all_topics)} topics", icon="✅")
 
             st.divider()
@@ -1799,6 +1870,35 @@ with tab3:
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
+        # Show partial results if assignment was interrupted
+        elif "assignments_partial" in st.session_state and st.session_state["assignments_partial"]:
+            partial_results = st.session_state["assignments_partial"]
+            st.warning(f"⚠️ **Partial results:** {len(partial_results)} documents assigned before interruption")
+
+            col_use, col_discard = st.columns(2)
+            with col_use:
+                if st.button("✅ Use Partial Results", use_container_width=True, type="primary", key="use_partial_assign"):
+                    st.session_state["assignments"] = partial_results
+                    # Convert to DataFrame
+                    results_df = pd.DataFrame([
+                        {
+                            "id": r["id"],
+                            "primary_topic": r.get("primary_topic", ""),
+                            "secondary_1": r.get("secondary_topics", [""])[0] if r.get("secondary_topics") else "",
+                            "secondary_2": r.get("secondary_topics", ["", ""])[1] if len(r.get("secondary_topics", [])) > 1 else "",
+                            "reasoning": r.get("reasoning", ""),
+                            "error": r.get("error", "")
+                        }
+                        for r in partial_results
+                    ])
+                    st.session_state["results_df"] = results_df
+                    del st.session_state["assignments_partial"]
+                    st.rerun()
+            with col_discard:
+                if st.button("🗑️ Discard & Restart", use_container_width=True, type="secondary", key="discard_partial_assign"):
+                    del st.session_state["assignments_partial"]
+                    st.rerun()
+
         elif st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
             client = get_client(model)
             if not client:
