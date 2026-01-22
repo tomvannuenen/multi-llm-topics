@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" font-family="Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1200" height="580" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="600" y="40" text-anchor="middle" font-size="24" font-weight="bold" fill="#333">Multi-LLM Topic Discovery Pipeline</text>
+
+  <!-- Stage 1: Discovery -->
+  <g transform="translate(50, 80)">
+    <text x="120" y="0" text-anchor="middle" font-size="18" font-weight="bold" fill="#333">1. Discovery</text>
+
+    <!-- Corpus docs -->
+    <text x="120" y="30" text-anchor="middle" font-size="12" font-style="italic" fill="#666">Corpus</text>
+    <rect x="20" y="40" width="40" height="50" fill="#f0f0f0" stroke="#ccc" rx="3"/>
+    <rect x="70" y="40" width="40" height="50" fill="#f0f0f0" stroke="#ccc" rx="3"/>
+    <rect x="120" y="40" width="40" height="50" fill="#f0f0f0" stroke="#ccc" rx="3"/>
+    <rect x="170" y="40" width="40" height="50" fill="#f0f0f0" stroke="#ccc" rx="3"/>
+    <line x1="35" y1="55" x2="55" y2="55" stroke="#999" stroke-width="1"/>
+    <line x1="35" y1="65" x2="55" y2="65" stroke="#999" stroke-width="1"/>
+    <line x1="35" y1="75" x2="50" y2="75" stroke="#999" stroke-width="1"/>
+    <line x1="85" y1="55" x2="105" y2="55" stroke="#999" stroke-width="1"/>
+    <line x1="85" y1="65" x2="105" y2="65" stroke="#999" stroke-width="1"/>
+    <line x1="85" y1="75" x2="100" y2="75" stroke="#999" stroke-width="1"/>
+    <line x1="135" y1="55" x2="155" y2="55" stroke="#999" stroke-width="1"/>
+    <line x1="135" y1="65" x2="155" y2="65" stroke="#999" stroke-width="1"/>
+    <line x1="135" y1="75" x2="150" y2="75" stroke="#999" stroke-width="1"/>
+    <line x1="185" y1="55" x2="205" y2="55" stroke="#999" stroke-width="1"/>
+    <line x1="185" y1="65" x2="205" y2="65" stroke="#999" stroke-width="1"/>
+    <line x1="185" y1="75" x2="200" y2="75" stroke="#999" stroke-width="1"/>
+
+    <!-- Multiple LLMs -->
+    <text x="120" y="115" text-anchor="middle" font-size="12" font-style="italic" fill="#666">Multiple LLMs</text>
+    <rect x="10" y="125" width="65" height="35" fill="#e8f4e8" stroke="#4a9" rx="5"/>
+    <text x="42" y="147" text-anchor="middle" font-size="10" fill="#333">Claude</text>
+    <rect x="85" y="125" width="65" height="35" fill="#e8e8f4" stroke="#66a" rx="5"/>
+    <text x="117" y="147" text-anchor="middle" font-size="10" fill="#333">Gemini</text>
+    <rect x="160" y="125" width="65" height="35" fill="#f4e8e8" stroke="#a66" rx="5"/>
+    <text x="192" y="147" text-anchor="middle" font-size="10" fill="#333">GPT</text>
+
+    <!-- Arrow down -->
+    <path d="M120 165 L120 185 L110 185 L120 200 L130 185 L120 185" fill="#666"/>
+
+    <!-- Raw topics output -->
+    <rect x="20" y="210" width="200" height="80" fill="#e6d5f2" stroke="#9370db" rx="5"/>
+    <text x="120" y="235" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">Raw Topics (500+)</text>
+    <text x="120" y="255" text-anchor="middle" font-size="9" fill="#555">• communication_issues</text>
+    <text x="120" y="268" text-anchor="middle" font-size="9" fill="#555">• talking_problems</text>
+    <text x="120" y="281" text-anchor="middle" font-size="9" fill="#555">• trust_breakdown ...</text>
+  </g>
+
+  <!-- Arrow to Review 1 -->
+  <path d="M280 280 L310 280" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Human Review 1 -->
+  <g transform="translate(320, 200)">
+    <rect x="0" y="40" width="100" height="80" fill="#fff3cd" stroke="#ffc107" rx="5"/>
+    <text x="50" y="70" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">👤 Review</text>
+    <text x="50" y="88" text-anchor="middle" font-size="9" fill="#555">Select topics</text>
+    <text x="50" y="101" text-anchor="middle" font-size="9" fill="#555">to keep</text>
+  </g>
+
+  <!-- Arrow to Consolidation -->
+  <path d="M430 280 L460 280" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 2: Consolidation -->
+  <g transform="translate(470, 80)">
+    <text x="100" y="0" text-anchor="middle" font-size="18" font-weight="bold" fill="#333">2. Consolidation</text>
+
+    <!-- Strong LLM -->
+    <text x="100" y="122" text-anchor="middle" font-size="12" font-style="italic" fill="#666">Strong LLM</text>
+    <rect x="25" y="132" width="150" height="35" fill="#d4edda" stroke="#28a745" rx="5"/>
+    <text x="100" y="154" text-anchor="middle" font-size="10" fill="#333">Claude Sonnet / GPT-4</text>
+
+    <!-- Consolidation prompt box -->
+    <rect x="10" y="40" width="180" height="65" fill="#ffeeba" stroke="#ffc107" rx="3"/>
+    <text x="100" y="58" text-anchor="middle" font-size="9" font-weight="bold" fill="#333">[Consolidation Prompt]</text>
+    <text x="100" y="73" text-anchor="middle" font-size="8" fill="#555">Merge semantically</text>
+    <text x="100" y="84" text-anchor="middle" font-size="8" fill="#555">equivalent topics</text>
+    <text x="100" y="95" text-anchor="middle" font-size="8" fill="#555">into taxonomy</text>
+
+    <!-- Arrow down -->
+    <path d="M100 172 L100 192 L90 192 L100 207 L110 192 L100 192" fill="#666"/>
+
+    <!-- Taxonomy output -->
+    <rect x="10" y="210" width="180" height="80" fill="#cce5ff" stroke="#007bff" rx="5"/>
+    <text x="100" y="235" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">Taxonomy (50-80)</text>
+    <text x="100" y="255" text-anchor="middle" font-size="9" fill="#555">• communication_breakdown</text>
+    <text x="100" y="268" text-anchor="middle" font-size="9" fill="#555">• trust_issues</text>
+    <text x="100" y="281" text-anchor="middle" font-size="9" fill="#555">• boundary_violations ...</text>
+  </g>
+
+  <!-- Arrow to Review 2 -->
+  <path d="M660 280 L690 280" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Human Review 2 -->
+  <g transform="translate(700, 200)">
+    <rect x="0" y="40" width="100" height="80" fill="#fff3cd" stroke="#ffc107" rx="5"/>
+    <text x="50" y="70" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">👤 Review</text>
+    <text x="50" y="88" text-anchor="middle" font-size="9" fill="#555">Edit names &amp;</text>
+    <text x="50" y="101" text-anchor="middle" font-size="9" fill="#555">descriptions</text>
+  </g>
+
+  <!-- Arrow to Assignment -->
+  <path d="M810 280 L840 280" stroke="#666" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 3: Assignment -->
+  <g transform="translate(850, 80)">
+    <text x="150" y="0" text-anchor="middle" font-size="18" font-weight="bold" fill="#333">3. Assignment</text>
+
+    <!-- Document + Taxonomy -->
+    <rect x="20" y="40" width="120" height="50" fill="#f0f0f0" stroke="#ccc" rx="3"/>
+    <text x="80" y="60" text-anchor="middle" font-size="9" fill="#333">[Document]</text>
+    <text x="80" y="75" text-anchor="middle" font-size="9" fill="#333">[Taxonomy]</text>
+
+    <rect x="160" y="40" width="120" height="50" fill="#ffeeba" stroke="#ffc107" rx="3"/>
+    <text x="220" y="58" text-anchor="middle" font-size="9" font-weight="bold" fill="#333">[Assignment Prompt]</text>
+    <text x="220" y="73" text-anchor="middle" font-size="9" fill="#555">Assign 1-3 topics</text>
+    <text x="220" y="85" text-anchor="middle" font-size="9" fill="#555">to document</text>
+
+    <!-- Fast LLM -->
+    <text x="150" y="115" text-anchor="middle" font-size="12" font-style="italic" fill="#666">Fast LLM</text>
+    <rect x="50" y="125" width="200" height="35" fill="#d4edda" stroke="#28a745" rx="5"/>
+    <text x="150" y="147" text-anchor="middle" font-size="10" fill="#333">Gemini Flash / GPT-4-mini</text>
+
+    <!-- Arrow down -->
+    <path d="M150 165 L150 185 L140 185 L150 200 L160 185 L150 185" fill="#666"/>
+
+    <!-- Labeled output -->
+    <rect x="20" y="210" width="260" height="70" fill="#f8d7da" stroke="#dc3545" rx="5"/>
+    <text x="150" y="230" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">Labeled Documents</text>
+    <text x="150" y="248" text-anchor="middle" font-size="9" fill="#555">doc_1: communication_breakdown, trust_issues</text>
+    <text x="150" y="261" text-anchor="middle" font-size="9" fill="#555">doc_2: boundary_violations ...</text>
+
+    <!-- Arrow to spot check -->
+    <path d="M150 285 L150 305 L140 305 L150 320 L160 305 L150 305" fill="#666"/>
+
+    <!-- Spot check -->
+    <rect x="75" y="330" width="150" height="55" fill="#fff3cd" stroke="#ffc107" rx="5"/>
+    <text x="150" y="352" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">👤 Spot Check</text>
+    <text x="150" y="370" text-anchor="middle" font-size="9" fill="#555">Review sample for quality</text>
+  </g>
+
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- Legend at bottom -->
+  <g transform="translate(50, 540)">
+    <rect x="0" y="0" width="15" height="15" fill="#e8f4e8" stroke="#4a9" rx="2"/>
+    <text x="22" y="12" font-size="10" fill="#333">LLM Processing</text>
+
+    <rect x="120" y="0" width="15" height="15" fill="#fff3cd" stroke="#ffc107" rx="2"/>
+    <text x="142" y="12" font-size="10" fill="#333">Human Review</text>
+
+    <rect x="240" y="0" width="15" height="15" fill="#e6d5f2" stroke="#9370db" rx="2"/>
+    <text x="262" y="12" font-size="10" fill="#333">Intermediate Output</text>
+
+    <rect x="390" y="0" width="15" height="15" fill="#f8d7da" stroke="#dc3545" rx="2"/>
+    <text x="412" y="12" font-size="10" fill="#333">Final Output</text>
+  </g>
+</svg>

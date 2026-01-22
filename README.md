@@ -85,16 +85,46 @@ The tool includes both approaches—embedding clustering is useful for validatio
 
 ## Pipeline
 
+![Multi-LLM Topic Discovery Pipeline](pipeline_diagram.svg)
+
 ```
 1. DISCOVERY    →  Multiple LLMs discover topics independently
                    (e.g., 930 unique labels from 6 models)
+        ↓
+   TOPIC REVIEW →  Human selects which topics to keep
+                   (filter out noise, duplicates, irrelevant topics)
 
 2. CONSOLIDATION →  Strong LLM merges semantically equivalent topics
                    (e.g., 930 → 70 categories)
+        ↓
+   TAXONOMY REVIEW →  Human edits category names/descriptions
+                      (refine labels, exclude categories)
 
 3. ASSIGNMENT   →  Fast LLM assigns 1-3 topics per document
                    (multi-label classification)
+        ↓
+   SPOT CHECK   →  Human reviews sample of assignments
+                   (verify quality before export)
 ```
+
+### Human Verification Steps
+
+The pipeline includes three human-in-the-loop verification stages:
+
+1. **Topic Review** (after Discovery)
+   - Checkbox list to select/deselect discovered topics
+   - Select All / Deselect All / Multi-Model Only controls
+   - Must approve before consolidation proceeds
+
+2. **Taxonomy Review** (after Consolidation)
+   - Editable table: category name, description, include/exclude
+   - Edit category names and descriptions inline
+   - Must approve before assignment proceeds
+
+3. **Spot Check** (after Assignment)
+   - Random sample of 15 assignments shown with original text
+   - 👍/👎 ratings to assess quality
+   - Informational only (doesn't block export)
 
 ## Installation
 
@@ -301,19 +331,37 @@ This computes alignment between LLM categories and embedding clusters. In our ex
 
 ## Related Work
 
-This approach builds on ideas from LLM-based topic discovery, including:
+This approach builds on ideas from LLM-based topic discovery, particularly:
 
-- Pham et al. (2024) "TopicGPT: A Prompt-based Topic Modeling Framework"
-- Traditional topic modeling approaches (LDA, BERTopic)
+**TopicGPT** — The iterative discovery and refinement pipeline in this tool is inspired by Pham et al.'s TopicGPT framework, which demonstrated that LLMs can effectively discover and assign topics through prompting.
+
+```bibtex
+@misc{pham2023topicgpt,
+      title={TopicGPT: A Prompt-based Topic Modeling Framework},
+      author={Chau Minh Pham and Alexander Hoyle and Simeng Sun and Mohit Iyyer},
+      year={2023},
+      eprint={2311.01449},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
+
+**Key differences from TopicGPT:**
+- Multi-model ensemble approach (using diverse LLMs instead of a single model)
+- Human-in-the-loop verification at each pipeline stage
+- LLM-based consolidation instead of embedding clustering for merging topics
 
 ## Citation
 
+If you use this tool in your research, please cite:
+
 ```bibtex
-@software{vannuenen2025multilllmtopics,
+@software{vannuenen2025multillmtopics,
   author = {van Nuenen, Tom},
-  title = {Multi-LLM Topics: Ensemble Topic Discovery},
+  title = {Multi-LLM Topics: Ensemble Topic Discovery with Multiple Large Language Models},
   year = {2025},
-  url = {https://github.com/tomvannuenen/multi-llm-topics}
+  url = {https://github.com/tomvannuenen/multi-llm-topics},
+  note = {Inspired by TopicGPT (Pham et al., 2023)}
 }
 ```
 

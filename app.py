@@ -47,6 +47,57 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# Welcome dialog for first-time visitors
+@st.dialog("Welcome to Multi-LLM Topics", width="large")
+def show_welcome_dialog():
+    st.markdown("""
+    ### What is this?
+
+    A topic modeling tool that uses **multiple AI models** to discover themes in your text data.
+
+    ### Why multiple models?
+
+    Traditional topic modeling (LDA, BERTopic) struggles with domain-specific text where vocabulary
+    is uniform. LLM-based discovery uses semantic understanding instead of word patterns.
+
+    But different LLMs have different biases:
+    - **Claude** tends toward psychological framing
+    - **GPT** operates at higher abstraction levels
+    - **Gemini** produces fine-grained distinctions
+
+    By combining models, you get **complementary perspectives** that consolidate into a more
+    robust taxonomy than any single model would produce.
+
+    ### How it works
+    """)
+
+    # Show pipeline diagram
+    diagram_path = Path(__file__).parent / "pipeline_diagram.svg"
+    if diagram_path.exists():
+        st.image(str(diagram_path), use_container_width=True)
+
+    st.markdown("""
+    You review and approve results at each stage before proceeding.
+
+    ### Cost
+
+    - **Free**: Use models with `:free` suffix, or run locally with [Ollama](https://ollama.com)
+    - **Paid**: Typical cost is $0.50–$2.00 for a few hundred documents
+    """)
+
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("Get Started", type="primary", use_container_width=True):
+            st.session_state["welcome_dismissed"] = True
+            st.rerun()
+
+
+# Show welcome dialog on first visit
+if "welcome_dismissed" not in st.session_state:
+    show_welcome_dialog()
+
+
 # Default recommended models (used if API fetch fails)
 # Free models have :free suffix - great for testing!
 DEFAULT_DISCOVERY_MODELS = [
@@ -696,10 +747,102 @@ with st.sidebar:
     st.markdown("## Multi-LLM Topics")
     st.caption("by [Tom van Nuenen](https://tomvannuenen.github.io) · [GitHub](https://github.com/tomvannuenen)")
 
-    # --- DATA SECTION ---
-    st.subheader("📄 Data")
+    # --- STEP 1: API KEY ---
+    api_ready = st.session_state.get("api_key_valid") or st.session_state.get("ollama_enabled")
+    step1_status = "✓" if api_ready else "1"
+    st.subheader(f"{step1_status} API Key")
 
-    if "data" not in st.session_state:
+    if api_ready:
+        st.success("Ready to use")
+    else:
+        st.caption("Get a free key from [OpenRouter](https://openrouter.ai)")
+
+    with st.expander("Settings", expanded=not api_ready):
+        api_key = st.text_input(
+            "OpenRouter API Key",
+            type="password",
+            value=st.session_state.get("api_key", os.environ.get("OPENROUTER_API_KEY", "")),
+            help="Get your key at [openrouter.ai](https://openrouter.ai). Your key is not saved anywhere—it's only stored in memory for this session."
+        )
+        if api_key:
+            # Only validate if key changed
+            if api_key != st.session_state.get("api_key_validated", ""):
+                with st.spinner("Validating..."):
+                    try:
+                        response = requests.get(
+                            "https://openrouter.ai/api/v1/auth/key",
+                            headers={"Authorization": f"Bearer {api_key}"},
+                            timeout=10
+                        )
+                        if response.status_code == 200:
+                            st.session_state["api_key"] = api_key
+                            st.session_state["api_key_validated"] = api_key
+                            st.session_state["api_key_valid"] = True
+
+                            # Try to get actual credit balance
+                            credits_response = requests.get(
+                                "https://openrouter.ai/api/v1/credits",
+                                headers={"Authorization": f"Bearer {api_key}"},
+                                timeout=10
+                            )
+                            if credits_response.status_code == 200:
+                                credits_data = credits_response.json().get("data", {})
+                                total_credits = credits_data.get("total_credits", 0)
+                                total_usage = credits_data.get("total_usage", 0)
+                                remaining = total_credits - total_usage
+                                st.session_state["api_credits"] = remaining
+                                st.success(f"✓ ${remaining:.2f} remaining")
+                            else:
+                                st.session_state["api_credits"] = None
+                                st.success("✓ Valid")
+                        else:
+                            st.session_state["api_key_valid"] = False
+                            st.error("Invalid API key")
+                    except Exception as e:
+                        st.session_state["api_key_valid"] = False
+                        st.error(f"Error: {e}")
+            elif st.session_state.get("api_key_valid"):
+                credits = st.session_state.get("api_credits")
+                if credits is not None:
+                    st.success(f"✓ ${credits:.2f} remaining")
+                else:
+                    st.success("✓ Valid")
+
+        # Ollama (nested inside API settings)
+        st.caption("---")
+        st.caption("**Local Models (Ollama)**")
+
+        # Quick check if Ollama is reachable
+        ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
+        ollama_available = False
+        try:
+            test_response = requests.get(f"{ollama_url}/api/tags", timeout=2)
+            ollama_available = test_response.status_code == 200
+        except:
+            pass
+
+        if not ollama_available:
+            st.caption("Run locally to use Ollama. [Instructions →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
+        else:
+            ollama_enabled = st.checkbox(
+                "Enable Ollama",
+                value=st.session_state.get("ollama_enabled", False),
+            )
+            st.session_state["ollama_enabled"] = ollama_enabled
+
+            if ollama_enabled:
+                ollama_models = fetch_ollama_models(ollama_url)
+                if ollama_models:
+                    st.success(f"✓ {len(ollama_models)} local models")
+
+    st.divider()
+
+    # --- STEP 2: DATA ---
+    data_ready = "data" in st.session_state
+    step2_status = "✓" if data_ready else "2"
+    st.subheader(f"{step2_status} Upload Data")
+
+    if not data_ready:
         # Data source selection
         data_source = st.radio(
             "Source",
@@ -778,7 +921,9 @@ with st.sidebar:
 
         # Clear data button
         if st.button("Clear data", type="secondary", use_container_width=True):
-            for key in ["data", "discovered_topics", "taxonomy", "assignments", "results_df",
+            for key in ["data", "discovered_topics", "approved_topics", "topic_selection",
+                        "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
+                        "assignments", "results_df", "spot_check_sample", "spot_check_ratings",
                         "text_column", "id_column"]:
                 if key in st.session_state:
                     del st.session_state[key]
@@ -786,84 +931,15 @@ with st.sidebar:
 
     st.divider()
 
-    # --- API SETTINGS SECTION ---
-    with st.expander("🔑 API Settings", expanded=not st.session_state.get("api_key_valid")):
-        api_key = st.text_input(
-            "OpenRouter API Key",
-            type="password",
-            value=st.session_state.get("api_key", os.environ.get("OPENROUTER_API_KEY", "")),
-            help="Get your key at [openrouter.ai](https://openrouter.ai)"
-        )
-        if api_key:
-            # Only validate if key changed
-            if api_key != st.session_state.get("api_key_validated", ""):
-                with st.spinner("Validating..."):
-                    try:
-                        response = requests.get(
-                            "https://openrouter.ai/api/v1/auth/key",
-                            headers={"Authorization": f"Bearer {api_key}"},
-                            timeout=10
-                        )
-                        if response.status_code == 200:
-                            st.session_state["api_key"] = api_key
-                            st.session_state["api_key_validated"] = api_key
-                            st.session_state["api_key_valid"] = True
-
-                            # Try to get actual credit balance
-                            credits_response = requests.get(
-                                "https://openrouter.ai/api/v1/credits",
-                                headers={"Authorization": f"Bearer {api_key}"},
-                                timeout=10
-                            )
-                            if credits_response.status_code == 200:
-                                credits_data = credits_response.json().get("data", {})
-                                total_credits = credits_data.get("total_credits", 0)
-                                total_usage = credits_data.get("total_usage", 0)
-                                remaining = total_credits - total_usage
-                                st.session_state["api_credits"] = remaining
-                                st.success(f"✓ ${remaining:.2f} remaining")
-                            else:
-                                st.session_state["api_credits"] = None
-                                st.success("✓ Valid")
-                        else:
-                            st.session_state["api_key_valid"] = False
-                            st.error("Invalid API key")
-                    except Exception as e:
-                        st.session_state["api_key_valid"] = False
-                        st.error(f"Error: {e}")
-            elif st.session_state.get("api_key_valid"):
-                credits = st.session_state.get("api_credits")
-                if credits is not None:
-                    st.success(f"✓ ${credits:.2f} remaining")
-                else:
-                    st.success("✓ Valid")
-
-        # Ollama (nested inside API settings)
-        st.caption("---")
-        st.caption("**Local Models (Ollama)**")
-
-        # Quick check if Ollama is reachable
-        ollama_url = st.session_state.get("ollama_url", "http://localhost:11434")
-        ollama_available = False
-        try:
-            test_response = requests.get(f"{ollama_url}/api/tags", timeout=2)
-            ollama_available = test_response.status_code == 200
-        except:
-            pass
-
-        if not ollama_available:
-            st.caption("Run locally to use Ollama. [Instructions →](https://github.com/tomvannuenen/multi-llm-topics#running-locally-with-ollama-free)")
-        else:
-            ollama_enabled = st.checkbox(
-                "Enable Ollama",
-                value=st.session_state.get("ollama_enabled", False),
-            )
-            st.session_state["ollama_enabled"] = ollama_enabled
-
-            if ollama_enabled:
-                ollama_models = fetch_ollama_models(ollama_url)
-                if ollama_models:
-                    st.success(f"✓ {len(ollama_models)} local models")
+    # --- STEP 3: RUN PIPELINE ---
+    step3_status = "✓" if st.session_state.get("results_df") is not None else "3"
+    st.subheader(f"{step3_status} Run Pipeline")
+    if api_ready and data_ready:
+        st.success("Ready! Use the tabs below →")
+    elif not api_ready:
+        st.caption("Complete step 1 first")
+    else:
+        st.caption("Complete step 2 first")
 
 # Main content
 
@@ -876,22 +952,13 @@ if "data" not in st.session_state:
     in your documents. Using multiple models produces more robust results than any single model.
     """)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("**🔑 Get API key**")
-        st.caption("From [OpenRouter](https://openrouter.ai) — free to sign up")
-    with col2:
-        st.markdown("**📄 Upload data**")
-        st.caption("CSV file with a text column, or load sample data")
-    with col3:
-        st.markdown("**▶️ Run pipeline**")
-        st.caption("Discovery → Consolidation → Assignment → Download")
+    st.info("👈 **Get started:** Complete steps 1-2 in the sidebar, then run the pipeline in the tabs below.")
 
     st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. Or enable [Ollama](https://ollama.com) in the sidebar to run models locally for free.")
 
-    with st.expander("📖 How does this work?", expanded=False):
+    with st.expander("📖 How does this tool work?", expanded=False):
         st.markdown("""
-        ### Why multiple LLMs?
+        ### Why use multiple LLMs for topic discovery?
 
         Traditional topic modeling (LDA, BERTopic) struggles with domain-specific text where
         vocabulary is uniform. LLM-based discovery uses semantic understanding instead of
@@ -909,9 +976,19 @@ if "data" not in st.session_state:
         ### The pipeline
 
         1. **Discovery**: Multiple LLMs independently identify topics from a sample of your documents
+           - **→ Topic Review**: Select which topics to keep (filter noise, duplicates)
         2. **Consolidation**: A strong LLM merges semantically equivalent topics into a coherent taxonomy
+           - **→ Taxonomy Review**: Edit category names/descriptions, exclude categories
         3. **Assignment**: A fast LLM assigns 1-3 topics to each document
+           - **→ Spot Check**: Review a sample of assignments to verify quality
         4. **Results**: Download your labeled data as CSV
+
+        ### Human-in-the-loop verification
+
+        The pipeline requires your approval at each stage:
+        - **Topic Review**: Checkbox list to select/deselect topics before consolidation
+        - **Taxonomy Review**: Editable table to refine names, descriptions, and inclusions
+        - **Spot Check**: Rate a random sample of assignments (👍/👎) to assess quality
 
         ### Cost
 
@@ -1024,6 +1101,10 @@ with tab1:
         - Select 3-5 diverse models (different providers)
         - Use 200-500 documents per model for good coverage
         - Fast/cheap models work well — look for models with `:free` suffix
+
+        **After discovery:** You'll review and approve the discovered topics before consolidation.
+        Use the checkboxes to select which topics to keep. "Multi-Model Only" filters to topics
+        found by 2+ models (more robust).
 
         **Cost:** Discovery is cheap (~$0.01-0.05 per 100 docs), or free with `:free` models
         """)
@@ -1363,6 +1444,9 @@ with tab2:
         - Target 50-80 final categories for most datasets
         - Review the output and adjust if needed
 
+        **After consolidation:** You'll review the taxonomy before assignment. Edit category
+        names and descriptions inline, or exclude categories that don't fit your needs.
+
         **Cost:** Consolidation is a single API call (~$0.50-2.00 for 500+ topics)
         """)
 
@@ -1585,6 +1669,10 @@ with tab3:
         - Use a fast, cheap model — or a `:free` model for testing
         - Assignment is the most expensive step (one API call per document)
         - Use 10 workers for parallel processing (built-in)
+
+        **After assignment:** A spot check shows 15 random assignments with original text.
+        Rate each as 👍 (good) or 👎 (needs review) to assess overall quality. This is
+        informational only—it doesn't block export.
 
         **Cost:** ~$0.01-0.05 per 100 documents with cheap models
         """)
