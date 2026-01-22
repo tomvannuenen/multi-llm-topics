@@ -967,6 +967,12 @@ if "data" not in st.session_state:
 
     st.success("💡 **Try for free:** Models with `:free` in the name cost nothing. Or enable [Ollama](https://ollama.com) in the sidebar to run models locally for free.")
 
+    st.warning("""
+    **Free model limits:** Free models on OpenRouter have daily caps (50 requests/day, or 1000/day with $10+ account balance)
+    and are rate-limited to 20 requests/minute. They're great for testing but may be too slow for large datasets.
+    Consider cheap paid models like `gemini-2.0-flash-001` (~$0.01 per 100 docs) for production use.
+    """)
+
     with st.expander("📖 How does this tool work?", expanded=False):
         st.markdown("""
         ### Why use multiple LLMs for topic discovery?
@@ -1119,6 +1125,9 @@ with tab1:
         found by 2+ models (more robust).
 
         **Cost:** Discovery is cheap (~$0.01-0.05 per 100 docs), or free with `:free` models
+
+        **Free model limits:** `:free` models are rate-limited (20 req/min, 50/day without $10+ balance).
+        They work for small tests but are slower. For larger datasets, cheap paid models are faster.
         """)
 
     with st.expander("✏️ Customize Discovery Prompt", expanded=False):
@@ -1687,6 +1696,10 @@ with tab3:
         informational only—it doesn't block export.
 
         **Cost:** ~$0.01-0.05 per 100 documents with cheap models
+
+        **Free model limits:** Assignment makes one API call per document, so free model
+        daily limits (50 req/day) can be a bottleneck. For datasets over 50 docs, consider
+        a cheap paid model like `gemini-2.0-flash-001`.
         """)
 
     with st.expander("✏️ Customize Assignment Prompt", expanded=False):
