@@ -1111,7 +1111,26 @@ with tab1:
         total_cost = sum(get_model_cost_estimate(m, n_samples, "discovery", avg_tokens) for m in selected_models)
         st.metric("Est. Cost", format_cost(total_cost))
 
-    if st.button("🚀 Start Discovery", type="primary", use_container_width=True):
+    # Show existing results or run button
+    if "discovered_topics" in st.session_state and not st.session_state.get("discovery_running"):
+        existing_topics = st.session_state["discovered_topics"]
+        st.success(f"✓ Discovery complete: {len(existing_topics)} topics found")
+        col_rerun, col_clear = st.columns(2)
+        with col_rerun:
+            if st.button("🔄 Re-run Discovery", use_container_width=True):
+                del st.session_state["discovered_topics"]
+                st.rerun()
+        with col_clear:
+            if st.button("🗑️ Clear Results", use_container_width=True, type="secondary"):
+                del st.session_state["discovered_topics"]
+                if "taxonomy" in st.session_state:
+                    del st.session_state["taxonomy"]
+                if "assignments" in st.session_state:
+                    del st.session_state["assignments"]
+                if "results_df" in st.session_state:
+                    del st.session_state["results_df"]
+                st.rerun()
+    elif st.button("🚀 Start Discovery", type="primary", use_container_width=True):
         # Check if any OpenRouter models are selected (need API key)
         openrouter_models = [m for m in selected_models if not m.startswith("ollama/")]
         if openrouter_models and not get_client():
@@ -1121,9 +1140,17 @@ with tab1:
         elif not selected_models:
             st.error("Please select at least one model")
         else:
+            st.session_state["discovery_running"] = True
             df = st.session_state["data"]
             text_col = st.session_state["text_column"]
             texts = df[text_col].dropna().tolist()
+
+            # Stop button
+            stop_placeholder = st.empty()
+            if stop_placeholder.button("⏹️ Stop Discovery", type="secondary", use_container_width=True):
+                st.session_state["discovery_running"] = False
+                st.warning("Discovery stopped by user")
+                st.rerun()
 
             all_topics = {}
 
@@ -1154,6 +1181,8 @@ with tab1:
 
                 st.success(f"Found {len(topics)} topics")
 
+            stop_placeholder.empty()  # Remove stop button
+            st.session_state["discovery_running"] = False
             st.session_state["discovered_topics"] = all_topics
             st.toast(f"Discovery complete! Found {len(all_topics)} topics", icon="✓")
 
@@ -1290,7 +1319,24 @@ with tab2:
             cost = get_model_cost_estimate(model, len(topics), "consolidation")
             st.metric("Est. Cost", format_cost(cost))
 
-        if st.button("🔄 Consolidate Topics", type="primary", use_container_width=True):
+        # Show existing results or run button
+        if "taxonomy" in st.session_state:
+            existing_tax = st.session_state["taxonomy"]
+            st.success(f"✓ Taxonomy ready: {len(existing_tax)} categories")
+            col_rerun, col_clear = st.columns(2)
+            with col_rerun:
+                if st.button("🔄 Re-run Consolidation", use_container_width=True):
+                    del st.session_state["taxonomy"]
+                    st.rerun()
+            with col_clear:
+                if st.button("🗑️ Clear Taxonomy", use_container_width=True, type="secondary"):
+                    del st.session_state["taxonomy"]
+                    if "assignments" in st.session_state:
+                        del st.session_state["assignments"]
+                    if "results_df" in st.session_state:
+                        del st.session_state["results_df"]
+                    st.rerun()
+        elif st.button("🔄 Consolidate Topics", type="primary", use_container_width=True):
             client = get_client(model)
             if not client:
                 st.error("Please set your OpenRouter API key for cloud models")
@@ -1405,7 +1451,24 @@ with tab3:
             cost = get_model_cost_estimate(model, n_docs, "assignment", avg_tokens)
             st.metric("Est. Cost", format_cost(cost))
 
-        if st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
+        # Show existing results or run button
+        if "assignments" in st.session_state:
+            existing_results = st.session_state["assignments"]
+            st.success(f"✓ Assignment complete: {len(existing_results)} documents labeled")
+            col_rerun, col_clear = st.columns(2)
+            with col_rerun:
+                if st.button("🔄 Re-run Assignment", use_container_width=True):
+                    del st.session_state["assignments"]
+                    if "results_df" in st.session_state:
+                        del st.session_state["results_df"]
+                    st.rerun()
+            with col_clear:
+                if st.button("🗑️ Clear Assignments", use_container_width=True, type="secondary"):
+                    del st.session_state["assignments"]
+                    if "results_df" in st.session_state:
+                        del st.session_state["results_df"]
+                    st.rerun()
+        elif st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
             client = get_client(model)
             if not client:
                 st.error("Please set your OpenRouter API key for cloud models")
