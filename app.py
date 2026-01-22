@@ -1152,17 +1152,21 @@ with tab1:
         col_rerun, col_clear = st.columns(2)
         with col_rerun:
             if st.button("🔄 Re-run Discovery", use_container_width=True):
-                del st.session_state["discovered_topics"]
+                # Clear discovery and all downstream
+                for key in ["discovered_topics", "approved_topics", "topic_selection",
+                           "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
+                           "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
         with col_clear:
             if st.button("🗑️ Clear Results", use_container_width=True, type="secondary"):
-                del st.session_state["discovered_topics"]
-                if "taxonomy" in st.session_state:
-                    del st.session_state["taxonomy"]
-                if "assignments" in st.session_state:
-                    del st.session_state["assignments"]
-                if "results_df" in st.session_state:
-                    del st.session_state["results_df"]
+                # Clear discovery and all downstream
+                for key in ["discovered_topics", "approved_topics", "topic_selection",
+                           "taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
+                           "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
     elif st.button("🚀 Start Discovery", type="primary", use_container_width=True):
         # Check if any OpenRouter models are selected (need API key)
@@ -1266,7 +1270,81 @@ with tab1:
                     height=400
                 )
 
-            st.info("**Next step →** Go to **② Consolidation** to merge these topics into a coherent taxonomy.")
+            st.rerun()  # Refresh to show review section
+
+    # Topic Review Section (shown when discovery complete but not yet approved)
+    if "discovered_topics" in st.session_state and "approved_topics" not in st.session_state:
+        st.divider()
+        st.subheader("✅ Review & Approve Topics")
+        st.caption("Select the topics to include in consolidation. Deselect irrelevant or duplicate topics.")
+
+        topics = st.session_state["discovered_topics"]
+        sorted_topics = sorted(topics.items(), key=lambda x: -x[1]["count"])
+
+        # Select/Deselect all controls
+        col_all, col_none, col_multi = st.columns(3)
+        with col_all:
+            select_all = st.button("Select All", use_container_width=True)
+        with col_none:
+            deselect_all = st.button("Deselect All", use_container_width=True)
+        with col_multi:
+            select_multi = st.button("Multi-Model Only", use_container_width=True,
+                                     help="Select only topics found by 2+ models")
+
+        # Initialize selection state
+        if "topic_selection" not in st.session_state or select_all:
+            st.session_state["topic_selection"] = {t: True for t in topics.keys()}
+        if deselect_all:
+            st.session_state["topic_selection"] = {t: False for t in topics.keys()}
+        if select_multi:
+            st.session_state["topic_selection"] = {t: len(d["models"]) > 1 for t, d in topics.items()}
+
+        # Display topics in columns with checkboxes
+        st.caption(f"**{len(sorted_topics)} topics** — check to include, uncheck to exclude")
+
+        # Create scrollable container with checkboxes
+        selected_count = 0
+        with st.container(height=400):
+            for topic, data in sorted_topics:
+                col_check, col_info = st.columns([1, 4])
+                with col_check:
+                    checked = st.checkbox(
+                        topic,
+                        value=st.session_state["topic_selection"].get(topic, True),
+                        key=f"topic_{topic}",
+                        label_visibility="collapsed"
+                    )
+                    st.session_state["topic_selection"][topic] = checked
+                    if checked:
+                        selected_count += 1
+                with col_info:
+                    models_str = ", ".join(data["models"])
+                    st.caption(f"**{topic}** — count: {data['count']}, models: {models_str}")
+
+        # Summary and approve button
+        st.info(f"**{selected_count} of {len(topics)} topics selected** for consolidation")
+
+        if st.button("✅ Approve Topics & Continue", type="primary", use_container_width=True):
+            approved = {t: d for t, d in topics.items() if st.session_state["topic_selection"].get(t, True)}
+            st.session_state["approved_topics"] = approved
+            st.toast(f"Approved {len(approved)} topics", icon="✅")
+            st.rerun()
+
+    # Show approval status
+    if "approved_topics" in st.session_state:
+        approved = st.session_state["approved_topics"]
+        original = st.session_state.get("discovered_topics", {})
+        st.success(f"✅ Topics approved: {len(approved)} of {len(original)} selected")
+
+        col_edit, col_next = st.columns(2)
+        with col_edit:
+            if st.button("📝 Edit Selection", use_container_width=True):
+                del st.session_state["approved_topics"]
+                if "topic_selection" in st.session_state:
+                    del st.session_state["topic_selection"]
+                st.rerun()
+        with col_next:
+            st.info("**Next →** Go to **② Consolidation**")
 
 # Tab 2: Consolidation
 with tab2:
@@ -1321,13 +1399,22 @@ with tab2:
             topics_data = json.load(uploaded_topics)
             if isinstance(topics_data, dict) and "topics" in topics_data:
                 st.session_state["discovered_topics"] = topics_data["topics"]
+                st.session_state["approved_topics"] = topics_data["topics"]  # Auto-approve uploaded
             else:
                 st.session_state["discovered_topics"] = topics_data
+                st.session_state["approved_topics"] = topics_data  # Auto-approve uploaded
             st.success(f"Loaded {len(st.session_state['discovered_topics'])} topics")
             st.rerun()
         st.stop()  # Don't show rest of tab until topics available
+
+    elif "approved_topics" not in st.session_state:
+        st.warning("**Approve topics first** in the ① Discovery tab before consolidation.")
+        st.caption(f"You have {len(st.session_state['discovered_topics'])} discovered topics awaiting review.")
+        st.stop()
+
     else:
-        topics = st.session_state["discovered_topics"]
+        topics = st.session_state["approved_topics"]
+        st.success(f"Using {len(topics)} approved topics")
 
         models_dict = get_models_by_category()
         consolidation_models = models_dict["all"] if models_dict["all"] else DEFAULT_CONSOLIDATION_MODELS
@@ -1356,19 +1443,23 @@ with tab2:
         # Show existing results or run button
         if "taxonomy" in st.session_state:
             existing_tax = st.session_state["taxonomy"]
-            st.success(f"✓ Taxonomy ready: {len(existing_tax)} categories")
+            st.success(f"✓ Taxonomy created: {len(existing_tax)} categories")
             col_rerun, col_clear = st.columns(2)
             with col_rerun:
                 if st.button("🔄 Re-run Consolidation", use_container_width=True):
-                    del st.session_state["taxonomy"]
+                    # Clear consolidation and all downstream
+                    for key in ["taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
+                               "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     st.rerun()
             with col_clear:
                 if st.button("🗑️ Clear Taxonomy", use_container_width=True, type="secondary"):
-                    del st.session_state["taxonomy"]
-                    if "assignments" in st.session_state:
-                        del st.session_state["assignments"]
-                    if "results_df" in st.session_state:
-                        del st.session_state["results_df"]
+                    # Clear consolidation and all downstream
+                    for key in ["taxonomy", "approved_taxonomy", "taxonomy_selection", "taxonomy_edits",
+                               "assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     st.rerun()
         elif st.button("🔄 Consolidate Topics", type="primary", use_container_width=True):
             client = get_client(model)
@@ -1383,16 +1474,101 @@ with tab2:
                 taxonomy = result.get("taxonomy", [])
                 st.session_state["taxonomy"] = taxonomy
                 st.toast(f"Consolidated to {len(taxonomy)} categories", icon="✅")
+                st.rerun()  # Refresh to show review section
 
-                st.success(f"Created {len(taxonomy)} categories!")
+        # Taxonomy Review Section (shown when consolidation complete but not yet approved)
+        if "taxonomy" in st.session_state and "approved_taxonomy" not in st.session_state:
+            st.divider()
+            st.subheader("✅ Review & Approve Taxonomy")
+            st.caption("Review the consolidated categories. Edit names, descriptions, or exclude categories.")
 
-                # Display taxonomy
-                for i, cat in enumerate(taxonomy[:20], 1):
-                    with st.expander(f"{i}. {cat['topic']} ({len(cat.get('source_topics', []))} sources)"):
-                        st.write(cat.get("description", ""))
-                        st.caption(f"Source topics: {', '.join(cat.get('source_topics', [])[:10])}...")
+            taxonomy = st.session_state["taxonomy"]
 
-                st.info("**Next step →** Go to **③ Assignment** to label your documents with these topics.")
+            # Initialize taxonomy selection state
+            if "taxonomy_selection" not in st.session_state:
+                st.session_state["taxonomy_selection"] = {i: True for i in range(len(taxonomy))}
+            if "taxonomy_edits" not in st.session_state:
+                st.session_state["taxonomy_edits"] = {}
+
+            # Select/Deselect all controls
+            col_all, col_none = st.columns(2)
+            with col_all:
+                if st.button("Select All Categories", use_container_width=True, key="tax_select_all"):
+                    st.session_state["taxonomy_selection"] = {i: True for i in range(len(taxonomy))}
+                    st.rerun()
+            with col_none:
+                if st.button("Deselect All Categories", use_container_width=True, key="tax_deselect_all"):
+                    st.session_state["taxonomy_selection"] = {i: False for i in range(len(taxonomy))}
+                    st.rerun()
+
+            st.caption(f"**{len(taxonomy)} categories** — check to include, edit names/descriptions as needed")
+
+            # Display categories with checkboxes and editable fields
+            selected_count = 0
+            with st.container(height=450):
+                for i, cat in enumerate(taxonomy):
+                    col_check, col_name, col_desc = st.columns([0.5, 2, 3])
+
+                    with col_check:
+                        checked = st.checkbox(
+                            f"cat_{i}",
+                            value=st.session_state["taxonomy_selection"].get(i, True),
+                            key=f"tax_check_{i}",
+                            label_visibility="collapsed"
+                        )
+                        st.session_state["taxonomy_selection"][i] = checked
+                        if checked:
+                            selected_count += 1
+
+                    with col_name:
+                        edited_name = st.text_input(
+                            f"Name {i}",
+                            value=st.session_state["taxonomy_edits"].get(f"{i}_name", cat["topic"]),
+                            key=f"tax_name_{i}",
+                            label_visibility="collapsed"
+                        )
+                        st.session_state["taxonomy_edits"][f"{i}_name"] = edited_name
+
+                    with col_desc:
+                        edited_desc = st.text_input(
+                            f"Desc {i}",
+                            value=st.session_state["taxonomy_edits"].get(f"{i}_desc", cat.get("description", "")),
+                            key=f"tax_desc_{i}",
+                            label_visibility="collapsed",
+                            placeholder="Description..."
+                        )
+                        st.session_state["taxonomy_edits"][f"{i}_desc"] = edited_desc
+
+            # Summary and approve button
+            st.info(f"**{selected_count} of {len(taxonomy)} categories selected** for assignment")
+
+            if st.button("✅ Approve Taxonomy & Continue", type="primary", use_container_width=True, key="approve_taxonomy"):
+                approved_taxonomy = []
+                for i, cat in enumerate(taxonomy):
+                    if st.session_state["taxonomy_selection"].get(i, True):
+                        approved_cat = {
+                            "topic": st.session_state["taxonomy_edits"].get(f"{i}_name", cat["topic"]),
+                            "description": st.session_state["taxonomy_edits"].get(f"{i}_desc", cat.get("description", "")),
+                            "source_topics": cat.get("source_topics", [])
+                        }
+                        approved_taxonomy.append(approved_cat)
+                st.session_state["approved_taxonomy"] = approved_taxonomy
+                st.toast(f"Approved {len(approved_taxonomy)} categories", icon="✅")
+                st.rerun()
+
+        # Show approval status
+        if "approved_taxonomy" in st.session_state:
+            approved = st.session_state["approved_taxonomy"]
+            original = st.session_state.get("taxonomy", [])
+            st.success(f"✅ Taxonomy approved: {len(approved)} of {len(original)} categories selected")
+
+            col_edit, col_next = st.columns(2)
+            with col_edit:
+                if st.button("📝 Edit Taxonomy", use_container_width=True, key="edit_taxonomy"):
+                    del st.session_state["approved_taxonomy"]
+                    st.rerun()
+            with col_next:
+                st.info("**Next →** Go to **③ Assignment**")
 
 # Tab 3: Assignment
 with tab3:
@@ -1444,12 +1620,21 @@ with tab3:
         )
         if uploaded_tax:
             tax_data = json.load(uploaded_tax)
-            st.session_state["taxonomy"] = tax_data.get("taxonomy", tax_data)
-            st.success(f"Loaded {len(st.session_state['taxonomy'])} categories")
+            loaded_tax = tax_data.get("taxonomy", tax_data)
+            st.session_state["taxonomy"] = loaded_tax
+            st.session_state["approved_taxonomy"] = loaded_tax  # Auto-approve uploaded
+            st.success(f"Loaded {len(loaded_tax)} categories")
             st.rerun()
         st.stop()  # Don't show rest of tab until taxonomy available
+
+    elif "approved_taxonomy" not in st.session_state:
+        st.warning("**Approve taxonomy first** in the ② Consolidation tab before assignment.")
+        st.caption(f"You have {len(st.session_state['taxonomy'])} categories awaiting review.")
+        st.stop()
+
     else:
-        taxonomy = st.session_state["taxonomy"]
+        taxonomy = st.session_state["approved_taxonomy"]
+        st.success(f"Using {len(taxonomy)} approved categories")
 
         models_dict = get_models_by_category()
         assignment_models = models_dict["all"] if models_dict["all"] else DEFAULT_ASSIGNMENT_MODELS
@@ -1492,15 +1677,15 @@ with tab3:
             col_rerun, col_clear = st.columns(2)
             with col_rerun:
                 if st.button("🔄 Re-run Assignment", use_container_width=True):
-                    del st.session_state["assignments"]
-                    if "results_df" in st.session_state:
-                        del st.session_state["results_df"]
+                    for key in ["assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     st.rerun()
             with col_clear:
                 if st.button("🗑️ Clear Assignments", use_container_width=True, type="secondary"):
-                    del st.session_state["assignments"]
-                    if "results_df" in st.session_state:
-                        del st.session_state["results_df"]
+                    for key in ["assignments", "results_df", "spot_check_sample", "spot_check_ratings"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     st.rerun()
         elif st.button("🏷️ Assign Topics", type="primary", use_container_width=True):
             client = get_client(model)
@@ -1541,14 +1726,103 @@ with tab3:
 
                 st.session_state["results_df"] = results_df
                 st.toast(f"Labeled {len(results)} documents", icon="✅")
-                st.success(f"Assigned topics to {len(results)} documents!")
+                st.rerun()  # Refresh to show spot check
 
-                # Show distribution
-                st.subheader("Topic Distribution")
-                topic_counts = results_df["primary_topic"].value_counts().head(15)
-                st.bar_chart(topic_counts)
+        # Spot Check Section (shown when assignments complete)
+        if "results_df" in st.session_state:
+            results_df = st.session_state["results_df"]
 
-                st.info("**Done!** Go to **④ Results** to download your data.")
+            # Show distribution
+            st.divider()
+            st.subheader("Topic Distribution")
+            topic_counts = results_df["primary_topic"].value_counts().head(15)
+            st.bar_chart(topic_counts)
+
+            # Spot Check
+            st.divider()
+            st.subheader("🔍 Spot Check Assignments")
+            st.caption("Review a sample of assignments to verify quality. This is informational only.")
+
+            # Get original texts for spot check
+            df = st.session_state.get("data")
+            text_col = st.session_state.get("text_column")
+            id_col = st.session_state.get("id_column")
+
+            # Initialize spot check state
+            if "spot_check_sample" not in st.session_state:
+                # Select random sample of up to 15 assignments
+                n_sample = min(15, len(results_df))
+                sample_indices = results_df.sample(n=n_sample).index.tolist()
+                st.session_state["spot_check_sample"] = sample_indices
+                st.session_state["spot_check_ratings"] = {}
+
+            sample_indices = st.session_state["spot_check_sample"]
+
+            # Resample button
+            if st.button("🔄 New Sample", key="resample_spot_check"):
+                n_sample = min(15, len(results_df))
+                st.session_state["spot_check_sample"] = results_df.sample(n=n_sample).index.tolist()
+                st.session_state["spot_check_ratings"] = {}
+                st.rerun()
+
+            # Display samples for review
+            good_count = sum(1 for v in st.session_state["spot_check_ratings"].values() if v == "good")
+            bad_count = sum(1 for v in st.session_state["spot_check_ratings"].values() if v == "bad")
+            reviewed = good_count + bad_count
+
+            st.caption(f"**{reviewed} of {len(sample_indices)} reviewed** — 👍 {good_count} good, 👎 {bad_count} needs review")
+
+            with st.container(height=450):
+                for idx in sample_indices:
+                    row = results_df.loc[idx]
+                    doc_id = row["id"]
+
+                    # Get original text
+                    if df is not None and text_col:
+                        if id_col == "(row index)":
+                            orig_text = df.iloc[doc_id][text_col] if doc_id < len(df) else "Text not found"
+                        else:
+                            match = df[df[id_col] == doc_id]
+                            orig_text = match[text_col].iloc[0] if len(match) > 0 else "Text not found"
+                    else:
+                        orig_text = "Original text not available"
+
+                    # Truncate text for display
+                    display_text = str(orig_text)[:300] + "..." if len(str(orig_text)) > 300 else str(orig_text)
+
+                    with st.expander(f"**{row['primary_topic']}** (ID: {doc_id})", expanded=False):
+                        st.caption(display_text)
+                        st.caption(f"Secondary: {row.get('secondary_1', '-')}, {row.get('secondary_2', '-')}")
+                        if row.get("reasoning"):
+                            st.caption(f"*Reasoning: {row['reasoning'][:150]}...*" if len(str(row.get('reasoning', ''))) > 150 else f"*Reasoning: {row['reasoning']}*")
+
+                        col_good, col_bad = st.columns(2)
+                        current_rating = st.session_state["spot_check_ratings"].get(idx)
+
+                        with col_good:
+                            if st.button("👍 Good", key=f"good_{idx}",
+                                        type="primary" if current_rating == "good" else "secondary",
+                                        use_container_width=True):
+                                st.session_state["spot_check_ratings"][idx] = "good"
+                                st.rerun()
+                        with col_bad:
+                            if st.button("👎 Review", key=f"bad_{idx}",
+                                        type="primary" if current_rating == "bad" else "secondary",
+                                        use_container_width=True):
+                                st.session_state["spot_check_ratings"][idx] = "bad"
+                                st.rerun()
+
+            # Summary
+            if reviewed > 0:
+                accuracy = good_count / reviewed * 100
+                if accuracy >= 80:
+                    st.success(f"**Quality looks good!** {accuracy:.0f}% of reviewed samples are acceptable.")
+                elif accuracy >= 50:
+                    st.warning(f"**Mixed results.** {accuracy:.0f}% acceptable. Consider adjusting prompts or taxonomy.")
+                else:
+                    st.error(f"**Quality concerns.** Only {accuracy:.0f}% acceptable. Review your taxonomy and prompts.")
+
+            st.info("**Done!** Go to **④ Results** to download your data.")
 
 # Tab 4: Results
 with tab4:
@@ -1559,34 +1833,44 @@ with tab4:
     # Discovery results
     with col1:
         st.subheader("📊 Discovery")
-        if "discovered_topics" in st.session_state:
-            topics = st.session_state["discovered_topics"]
-            st.metric("Topics", len(topics))
+        if "approved_topics" in st.session_state:
+            topics = st.session_state["approved_topics"]
+            original = st.session_state.get("discovered_topics", {})
+            st.metric("Approved Topics", len(topics), f"of {len(original)} discovered")
 
             topics_json = json.dumps({"topics": topics}, indent=2)
             st.download_button(
                 "Download Topics JSON",
                 topics_json,
-                "discovered_topics.json",
+                "approved_topics.json",
                 "application/json"
             )
+        elif "discovered_topics" in st.session_state:
+            topics = st.session_state["discovered_topics"]
+            st.metric("Topics", len(topics))
+            st.caption("⚠️ Not yet approved")
         else:
             st.caption("No discovery results yet")
 
     # Taxonomy
     with col2:
         st.subheader("🔄 Taxonomy")
-        if "taxonomy" in st.session_state:
-            taxonomy = st.session_state["taxonomy"]
-            st.metric("Categories", len(taxonomy))
+        if "approved_taxonomy" in st.session_state:
+            taxonomy = st.session_state["approved_taxonomy"]
+            original = st.session_state.get("taxonomy", [])
+            st.metric("Approved Categories", len(taxonomy), f"of {len(original)} created")
 
             tax_json = json.dumps({"taxonomy": taxonomy}, indent=2)
             st.download_button(
                 "Download Taxonomy JSON",
                 tax_json,
-                "taxonomy.json",
+                "approved_taxonomy.json",
                 "application/json"
             )
+        elif "taxonomy" in st.session_state:
+            taxonomy = st.session_state["taxonomy"]
+            st.metric("Categories", len(taxonomy))
+            st.caption("⚠️ Not yet approved")
         else:
             st.caption("No taxonomy yet")
 
